@@ -146,6 +146,38 @@ describe.skipIf(BINARY === undefined)('FilesnapRewind', () => {
     expect(points.ok && points.value[0]?.label).toBe('second change')
   })
 
+  it('still offers a point its parent captured, in a session that has captured nothing', async () => {
+    // What a fork leaves behind. The child's log carries the parent's points
+    // verbatim, but `filesnap log --session <child>` lists only what the CHILD
+    // captured — so filtering against that set drops every inherited point,
+    // which is every point a freshly forked session has.
+    const file = join(workspace.path, 'a.txt')
+    writeFileSync(file, 'original\n')
+
+    const parent = sessionAt('session-a', workspace.path)
+    parent.append('turn/start', { turn: 1 })
+    await service.capture(agentOn(parent), 1)
+    parent.append('turn/end', { turn: 1, reason: { kind: 'completed' } })
+
+    // The child inherits the parent's log and has captured nothing itself.
+    const child = sessionAt('session-b', workspace.path)
+    for (const event of parent.events) {
+      if (event.type === 'filesnap/point') child.append('filesnap/point', event.data)
+      else if (event.type === 'turn/start') child.append('turn/start', event.data)
+      else if (event.type === 'turn/end') child.append('turn/end', event.data)
+    }
+    const heir = agentOn(child)
+
+    const points = await service.points(heir)
+    expect(points.ok).toBe(true)
+    expect(points.ok && points.value.map(point => point.point)).toEqual(['session-a.t1'])
+
+    writeFileSync(file, 'wrecked\n')
+    const outcome = await service.rewind(heir, '1', { kind: 'into', session: SessionId('session-c') })
+    expect(outcome.ok).toBe(true)
+    expect(readFileSync(file, 'utf8')).toBe('original\n')
+  })
+
   it('forks the conversation, then restores the files into the fork', async () => {
     const file = join(workspace.path, 'a.txt')
     const session = sessionAt('session-a', workspace.path)

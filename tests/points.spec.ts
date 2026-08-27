@@ -133,14 +133,30 @@ describe('foldPoints', () => {
 })
 
 describe('reconcile', () => {
-  it('drops a point the store can no longer resolve', () => {
+  /** Both fixture turns are this session's own. */
+  const own = new Set(['s.t1', 's.t2'])
+
+  it('drops a point this session captured that the store no longer holds', () => {
     const points = foldPoints(log(...turn(1, 'a'), ...turn(2, 'b')))
-    expect(reconcile(points, new Set(['s.t2'])).map(point => point.turn)).toEqual([2])
+    expect(reconcile(points, new Set(['s.t2']), own).map(point => point.turn)).toEqual([2])
   })
 
   it('keeps the log order', () => {
     const points = foldPoints(log(...turn(1, 'a'), ...turn(2, 'b')))
-    expect(reconcile(points, new Set(['s.t2', 's.t1'])).map(point => point.turn)).toEqual([1, 2])
+    expect(reconcile(points, new Set(['s.t2', 's.t1']), own).map(point => point.turn)).toEqual([1, 2])
+  })
+
+  it('keeps a point another session minted, whatever this session\'s listing says', () => {
+    // A forked session's log carries its parent's points and its own listing is
+    // empty, so filtering on that listing would leave it with nothing to offer.
+    const points = foldPoints(log(...turn(1, 'a'), ...turn(2, 'b')))
+    expect(reconcile(points, new Set(), new Set()).map(point => point.turn)).toEqual([1, 2])
+  })
+
+  it('narrows only the points it can attribute to this session', () => {
+    const points = foldPoints(log(...turn(1, 'a'), ...turn(2, 'b')))
+    // Turn 1 is this session's and missing from the store; turn 2 is inherited.
+    expect(reconcile(points, new Set(), new Set(['s.t1'])).map(point => point.turn)).toEqual([2])
   })
 })
 

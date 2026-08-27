@@ -412,7 +412,15 @@ export class FilesnapRewind extends Service {
     )
     if (run.exit !== 'ok') return engineRefusal(run, 'filesnap could not read the session log')
     const resolvable = new Set(eventsOfType(run, 'log.entry').map(event => stringField(event, 'turn', '')))
-    return { ok: true, value: reconcile(logged, resolvable) }
+    // Which of these this session minted, asked of the minting rule rather
+    // than read out of the ids. An inherited point is not in this set, and is
+    // kept whatever this session's listing says.
+    const mintedHere = new Set<string>()
+    for (const point of logged) {
+      const minted = pointId(state.binding.id, point.turn)
+      if (minted.ok) mintedHere.add(minted.id)
+    }
+    return { ok: true, value: reconcile(logged, resolvable, mintedHere) }
   }
 
   /**

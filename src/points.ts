@@ -211,23 +211,35 @@ export function capturedPoints(state: PointsState): RewindPoint[] {
 }
 
 /**
- * Keep the points the store can still resolve.
+ * Drop the points **this session captured** that the store no longer holds.
  *
- * The two records drift for ordinary reasons: `filesnap delete` ends a
- * session's data, and a store from an older format version is left alone
- * rather than read. A point the log remembers and the store cannot resolve is
- * not an error — it is a rewind that is no longer available, and offering it
- * would be a listing of options that are not options.
+ * The narrowing matters. `filesnap log` answers per session, while a turn
+ * resolves through the workspace's turn index and is independent of any
+ * session — so a forked session, whose log carries its parent's points
+ * verbatim and which has captured nothing of its own, gets an empty listing
+ * back and would lose every point it can actually reach. Every point a freshly
+ * forked session has is an inherited one, which made this the common case
+ * rather than an edge.
+ *
+ * A point is this session's when this session's own id and that point's turn
+ * would mint it. Recomputed rather than parsed out of the id: the minting rule
+ * lives in one place and this asks it, instead of re-deriving it from a string.
+ *
+ * The two records still drift for ordinary reasons — `filesnap delete` ends a
+ * session's data — and offering a point the store cannot resolve is a listing
+ * of options that are not options. That is what this still removes.
  *
  * @param points - what the log remembers, from {@link foldPoints}.
  * @param resolvable - turn ids `filesnap log` reported for this session.
- * @returns the points that are still rewind targets, in the same order.
+ * @param mintedHere - the point ids this session would mint for the turns it holds.
+ * @returns the points still worth offering, in the same order.
  */
 export function reconcile(
   points: readonly RewindPoint[],
   resolvable: ReadonlySet<string>,
+  mintedHere: ReadonlySet<string>,
 ): RewindPoint[] {
-  return points.filter(point => resolvable.has(point.point))
+  return points.filter(point => !mintedHere.has(point.point) || resolvable.has(point.point))
 }
 
 /**
