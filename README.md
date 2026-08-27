@@ -1,5 +1,7 @@
 # dsh-filesnap
 
+English | [中文](README.zh.md)
+
 Rewind and redo for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness).
 
 Go back to the start of an earlier turn — the conversation *and* the files it

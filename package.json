@@ -20,6 +20,7 @@
     "lib/*.js",
     "lib/types/**/*.d.ts",
     "README.md",
+    "README.zh.md",
     "LICENSE"
   ],
   "license": "Apache-2.0",
