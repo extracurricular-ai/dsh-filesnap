@@ -23,9 +23,9 @@ import { agentEvents } from '@deepseek-ai/dsh-agent'
 import type { Agent, PreStepDecision } from '@deepseek-ai/dsh-agent'
 import CommandRuntime from '@deepseek-ai/dsh-commands'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
-import { Session, SessionId } from '@deepseek-ai/dsh-session'
+import { KNOWN_SESSION_EVENT_TYPES, Session, SessionId } from '@deepseek-ai/dsh-session'
 import type { SessionHeader } from '@deepseek-ai/dsh-session'
-import { apply } from '../src/index.ts'
+import { apply, FILESNAP_EVENT_TYPES } from '../src/index.ts'
 import { BINARY, nodeSubprocess, scratch } from './support.ts'
 
 /** A session bound to a working directory, and the slice of `Agent` this plugin reads. */
@@ -192,6 +192,18 @@ describe.skipIf(BINARY === undefined)('the plugin as a deployment mounts it', ()
       expect(readFileSync(file, 'utf8')).toBe('before the edit\n')
     } finally {
       outside.remove()
+    }
+  })
+
+  it('declares its event types, so a captured session stays loadable', async () => {
+    // The persistence reader refuses a log holding a type it does not know
+    // unless the event is marked ignorable, and a plugin outside the harness
+    // repository can do neither through the public API. Undeclared, every
+    // session this plugin captured in failed to load with
+    // SessionFormatUnsupportedError — the conversation was still on disk and
+    // the harness would not read it.
+    for (const type of FILESNAP_EVENT_TYPES) {
+      expect(KNOWN_SESSION_EVENT_TYPES.has(type)).toBe(true)
     }
   })
 

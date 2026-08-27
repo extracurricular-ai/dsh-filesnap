@@ -23,12 +23,14 @@
 
 import type { Context } from '@deepseek-ai/cordis'
 import { resolveConfig } from './config.ts'
+import { declareEventTypes } from './types.ts'
 import { registerProjection } from './projection.ts'
 import { FilesnapRewind } from './service.ts'
 import type {} from './types.ts'
 
 export { DEFAULTS, resolveConfig } from './config.ts'
 export type { FilesnapConfig } from './config.ts'
+export { declareEventTypes, FILESNAP_EVENT_TYPES } from './types.ts'
 export { currentTurn, FilesnapRewind } from './service.ts'
 export type { RewindDestination } from './service.ts'
 export { parseRewind } from './commands.ts'
@@ -63,6 +65,10 @@ export const inject = ['subprocess', 'agents']
  * @param config - the deployment's `config` block, validated here.
  */
 export function apply(ctx: Context, config: unknown): void {
+  // Before anything can append or read one. Not an effect: see the function's
+  // own note on why removing these on unload would strand existing logs.
+  declareEventTypes()
+
   const resolved = resolveConfig(config)
 
   // The service registers its own loop listeners and commands, on its own

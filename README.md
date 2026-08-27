@@ -268,6 +268,22 @@ seed: a point recorded in the log travels into every child that inherits the
 turn it belongs to, so a freshly forked session can offer rewind points before
 it has run a turn of its own.
 
+**The plugin declares these three types to the persistence reader at load, and
+must.** That reader refuses a log holding a type it does not know unless the
+event is marked `ignorable`, and both halves of that escape are closed to a
+plugin outside the harness repository: `KNOWN_SESSION_EVENT_TYPES` is generated
+from in-repo declarations — downstream events are outside it "by construction",
+with a registration surface "deferred until such a consumer exists" — and
+`Session.append` takes no options at all for a non-surface event, so the marker
+cannot be set. Undeclared, every session this plugin captured in failed to open
+with `SessionFormatUnsupportedError`.
+
+The declaration deliberately does not unwind, because removing it would strand
+those logs again. That is its cost, stated plainly: **uninstalling this plugin
+leaves sessions it captured in unreadable.** The fix that removes the cost
+belongs upstream — a registration surface, or an `append` that can mark an
+event ignorable.
+
 ## For other plugins
 
 The service is `ctx.filesnap`.
@@ -343,6 +359,9 @@ includes this plugin already has a checkout.
   per-agent model *selection* or workspace attachment.** Those live in the
   deployment's own fork path (`sessions.fork`), which `--into` exists to defer
   to — so the headless fork is the one that carries this gap.
+- **Uninstalling the plugin strands the sessions it captured in.** See "What it
+  records" — the event-type declaration cannot unwind without re-breaking those
+  logs, so removing the plugin re-introduces the refusal.
 - **The browser half is typecheck-verified and built, not browser-tested.** The
   artifact is the shell's own format and the two faces compile against the
   harness's declarations, but no test drives the rendered menu.

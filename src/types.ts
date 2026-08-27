@@ -15,6 +15,7 @@
  * @module
  */
 
+import { KNOWN_SESSION_EVENT_TYPES } from '@deepseek-ai/dsh-session'
 import type { SessionId } from '@deepseek-ai/dsh-session'
 import type { RewindPoint } from './wire.ts'
 
@@ -183,3 +184,35 @@ export type RewindRefusal
 export type RewindResult<T>
   = | { readonly ok: true; readonly value: T }
     | { readonly ok: false; readonly refusal: RewindRefusal }
+
+/** The three log-only types this plugin appends. */
+export const FILESNAP_EVENT_TYPES = ['filesnap/point', 'filesnap/rewound', 'filesnap/redone'] as const
+
+/**
+ * Declare these types to the persistence read path.
+ *
+ * **Without this, every session the plugin captures in becomes unopenable.**
+ * The reader refuses a log holding a type it does not know unless the event is
+ * marked `ignorable`, and both halves of that escape are closed to a plugin
+ * outside the harness repository: `KNOWN_SESSION_EVENT_TYPES` is generated from
+ * in-repo declarations — its own comment says downstream plugin events are
+ * outside it "by construction", with a registration surface "deferred until
+ * such a consumer exists" — and `Session.append` accepts no options at all for
+ * a non-surface event, so the `ignorable` marker cannot be set from here.
+ *
+ * So this is that registration surface, taken unofficially. The set is a plain
+ * runtime `Set`; adding to it is membership, not behaviour, and the refusal it
+ * lifts is precisely the one `ignorable` was meant to lift for records like
+ * these — losing a rewind point cannot change how the rest of a log reads.
+ *
+ * **It deliberately does not unwind.** Removing the types on unload would make
+ * every log this plugin ever wrote unreadable again, which is the failure the
+ * marker exists to prevent. That is also this shim's real cost, and it is worth
+ * stating plainly: **uninstalling the plugin strands those sessions**. The fix
+ * that removes the cost belongs upstream — either a registration surface, or an
+ * `append` that can mark an event ignorable.
+ */
+export function declareEventTypes(): void {
+  const known = KNOWN_SESSION_EVENT_TYPES as Set<string>
+  for (const type of FILESNAP_EVENT_TYPES) known.add(type)
+}
