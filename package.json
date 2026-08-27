@@ -44,7 +44,8 @@
     "test:watch": "vitest",
     "test:standalone": "vitest run tests/ids.spec.ts tests/config.spec.ts tests/cli.spec.ts tests/points.spec.ts",
     "harness:link": "node scripts/link-harness.mjs",
-    "build:client": "node scripts/build-client.mjs"
+    "build:client": "node scripts/build-client.mjs",
+    "prepublishOnly": "npm run typecheck && npm test && npm run build && npm run build:client"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": ">=4",
