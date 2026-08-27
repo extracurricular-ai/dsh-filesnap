@@ -30,7 +30,13 @@
  * @module dsh-filesnap/client
  */
 
-import type { ClientContext, SessionId } from '@deepseek-ai/dsh-client-runtime/client'
+// Taken from cordis and the session package rather than from
+// `@deepseek-ai/dsh-client-runtime/client`, which the harness has since
+// removed. That package's `ClientContext` was `export type ClientContext =
+// Context` — a plain alias — so this is the same type from its own home, and it
+// resolves against a harness from either side of the removal.
+import type { Context as ClientContext } from '@deepseek-ai/cordis'
+import type { SessionId } from '@deepseek-ai/dsh-session/types'
 // Type-only: pulls the ui-conversation SlotMap merge (the two strips).
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 // Type-only: pulls the locale plugin's Context merge (ctx.locale).

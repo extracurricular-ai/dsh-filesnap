@@ -211,11 +211,17 @@ export function reducePoints(state: PointsState, event: SessionEvent): PointsSta
  * `filesnap/point`; a turn whose capture failed is deliberately absent rather
  * than listed and refused on use.
  *
- * The `boundary` each point carries is the seq of the event *before* its turn
- * opened, which is the last `turn/end` (or nothing, for the first turn). That
- * is the cut a fork needs: a prefix ending inside an open turn is rejected, and
- * cutting at the `turn/start` itself would land the child holding an opened
- * turn it never ran.
+ * The `boundary` each point carries is the seq of the message that closed the
+ * turn *before* this point's own — the anchor a fork takes, not a cut. The host
+ * rounds it forward to the first `turn/end` at or after it and keeps that whole
+ * turn, so anchoring inside the previous turn is what leaves the child ending
+ * where the restored workspace does. Anchoring one event before this turn
+ * opened reads like the same thing and is not: it lands on this turn's own end
+ * and keeps the turn the restore undoes.
+ *
+ * The first turn of a session has no anchor and carries none. A fork needs a
+ * completed turn to keep, and an absent `atSeq` is not "the beginning" — the
+ * host reads it as the last completed turn.
  *
  * @param events - the session log, in order.
  * @returns the points, oldest first.

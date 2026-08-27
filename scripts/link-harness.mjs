@@ -39,7 +39,12 @@ const PACKAGES = [
   // The browser half's inputs. Their `lib/types/client` declarations are what
   // a client bundle is checked against; the bundle itself is built by the
   // harness's own preset (see tsdown.config.ts).
-  'packages/client/runtime',
+  //
+  // `packages/client/runtime` used to be here. The harness removed it, and
+  // because this list is checked for `lib/types` the absence surfaced as
+  // "the harness is not built" — a checkout that was built fine. A package
+  // that goes away upstream should not read as a local mistake, so the check
+  // below now separates the two.
   'packages/client/ui-slots',
   'packages/client/ui-primitives',
   'packages/client/ui-conversation',
@@ -57,10 +62,23 @@ if (!existsSync(harness)) {
   process.exit(1)
 }
 
-const missing = PACKAGES.filter(dir => !existsSync(resolve(harness, dir, 'lib/types')))
-if (missing.length > 0) {
+// Two different failures, told apart. A directory that is not there is a
+// harness that moved or dropped the package, and no amount of rebuilding will
+// produce it; a directory that is there without `lib/types` is a checkout
+// nobody has built. Reporting both as "not built" sent this project's CI
+// looking at its build for a package the harness had removed.
+const absent = PACKAGES.filter(dir => !existsSync(resolve(harness, dir)))
+if (absent.length > 0) {
+  console.error(`${harness} does not contain:`)
+  for (const dir of absent) console.error(`  ${dir}`)
+  console.error('the harness moved or removed these — this list needs updating, not a rebuild.')
+  process.exit(1)
+}
+
+const unbuilt = PACKAGES.filter(dir => !existsSync(resolve(harness, dir, 'lib/types')))
+if (unbuilt.length > 0) {
   console.error(`${harness} is not built — no lib/types in:`)
-  for (const dir of missing) console.error(`  ${dir}`)
+  for (const dir of unbuilt) console.error(`  ${dir}`)
   console.error('run `pnpm install && pnpm run build` there first.')
   process.exit(1)
 }
