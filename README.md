@@ -58,6 +58,47 @@ numbers will differ; the shape won't.)*
 This package is the harness half: it decides *when* to snapshot, what a rewind
 point means in a conversation, and how the two halves of a rewind are sequenced.
 
+### Using it for a different agent
+
+**The engine knows nothing about its host.** Its own documentation is explicit
+about it — it takes opaque string ids and absolute paths, never reads or writes
+your git state, and treats a directory that has never seen `git init` as a
+first-class workspace. Nothing in it is aware that dsh exists. That is a design
+commitment, not a coincidence, and it is what makes it portable to an agent that
+is not this one.
+
+Two ways in:
+
+- **Rust** — `cargo add filesnap`. `capture`, `restore`, `scan_report` and the
+  store types are the public API.
+- **Anything else** — drive the binary. Every command writes versioned JSON
+  Lines to stdout and keeps human text on stderr, so a subprocess and a line
+  parser are the whole integration. The npm package ships the binary with no JS
+  API, because this is the intended path rather than a fallback.
+
+**This repository is the worked example of the second one, and the cost is
+measurable.** [`src/cli.ts`](https://github.com/extracurricular-ai/dsh-filesnap/blob/main/src/cli.ts) — 116 non-comment lines — is the entire
+engine interface: spawn it, parse the JSONL, map the exit codes. There is
+nothing dsh-specific in that file. Copy it.
+
+What is *not* 116 lines is the other ~1,100 in this repository, and that is the
+part worth understanding before you start. Those lines decide when a turn is
+worth capturing, what a rewind point means once a conversation can fork, how the
+conversation and the files are sequenced so a crash between them is survivable,
+and what happens to a point inherited from a parent session. **filesnap
+deliberately makes none of those decisions for you** — they differ per agent,
+and a library that guessed would be wrong in a way you could not override.
+
+So the honest pitch is narrow and, we think, better for it: filesnap does not
+give you a rewind feature. It makes the snapshot-and-restore half a solved
+problem in about a hundred lines, so your effort goes to the half that is
+actually specific to your agent.
+
+[crates.io](https://crates.io/crates/filesnap) ·
+[docs.rs](https://docs.rs/filesnap) ·
+[npm](https://www.npmjs.com/package/filesnap) ·
+[github](https://github.com/extracurricular-ai/filesnap)
+
 > **Before you install:** the plugin records its rewind points as session
 > events, and the harness has no supported way for an out-of-repo plugin to
 > declare an event type — so it declares them by mutating a harness constant at

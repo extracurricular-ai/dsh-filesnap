@@ -42,6 +42,26 @@ Run /redo there to reverse this rewind.
 
 本包是 harness 这一半:决定**什么时候**快照、一个回退点在对话里意味着什么,以及一次回退的两半按什么顺序发生。
 
+### 给别的 agent 用
+
+**引擎不知道自己的宿主是谁。** 这一点写在它自己的文档里:它只接受不透明的字符串 id 和绝对路径,从不读写你的 git 状态,一个从没 `git init` 过的目录同样是一等公民。它里面没有任何一处知道 dsh 的存在。这是一条设计承诺,不是巧合 —— 也正是它能被搬到别的 agent 上的原因。
+
+两条路:
+
+- **Rust** —— `cargo add filesnap`。`capture`、`restore`、`scan_report` 以及存储类型就是公开 API。
+- **其他任何语言** —— 直接驱动那个二进制。每条命令都往 stdout 写带版本号的 JSON Lines,给人看的文字一律走 stderr,所以整个集成就是"起个子进程 + 按行解析"。npm 包只发二进制、不带 JS API,因为这本来就是**预期路径**,不是退路。
+
+**这个仓库就是第二条路的 worked example,而且代价是可量的。** [`src/cli.ts`](https://github.com/extracurricular-ai/dsh-filesnap/blob/main/src/cli.ts) —— 116 行(不含注释)—— 就是全部的引擎接口:起进程、解析 JSONL、映射退出码。那个文件里没有一行是 dsh 专有的。抄走就行。
+
+**不是** 116 行的,是这个仓库里另外约 1,100 行 —— 动手之前,这部分才是值得先看明白的。那些行决定的是:哪一轮值得捕获;当对话可以 fork 之后,一个回退点还意味着什么;对话和文件按什么顺序落地,才能让中间崩溃仍然可恢复;以及从父会话继承来的点该怎么处理。**filesnap 刻意不替你做这些决定** —— 它们每个 agent 都不一样,而一个靠猜的库会以你无法覆盖的方式猜错。
+
+所以这个推荐是窄的,而我们认为窄了反而更实在:filesnap 不会给你一个 rewind 功能。**它把"快照与还原"这一半变成一百来行就能解决的问题,好让你的力气花在真正属于你的 agent 的那一半上。**
+
+[crates.io](https://crates.io/crates/filesnap) ·
+[docs.rs](https://docs.rs/filesnap) ·
+[npm](https://www.npmjs.com/package/filesnap) ·
+[github](https://github.com/extracurricular-ai/filesnap)
+
 > **安装前请先知道这一点:** 插件把回退点记录为 session 事件,而 harness 没有为仓库外的插件提供声明事件类型的正式接口 —— 所以它在加载时通过修改一个 harness 常量来声明。这能工作,但有一个用户可见的后果值得先说清楚:**卸载插件后,被它抓过快照的对话会打不开**,因为读取端会拒绝一个含有未知类型的日志。磁盘上的数据完好无损;重新安装即可恢复访问。详见[已知限制](#已知限制)。
 
 ## 它做什么
