@@ -574,6 +574,18 @@ export class FilesnapRewind extends Service {
     if (!available.ok) return available
     const point = selectPoint(available.value, selector)
     if (point === undefined) return refuse({ kind: 'unknown-point', point: selector })
+    // Refused here rather than at the fork, because a caller that forked for
+    // itself (`--into`) has already committed a child by the time this runs:
+    // an anchorless point would have sent that fork to the host with no
+    // `atSeq`, which silently means "the last completed turn" — the newest
+    // state, the opposite of a rewind.
+    const anchor = point.boundary
+    if (anchor === undefined) {
+      return refuse({
+        kind: 'fork-failed',
+        message: `turn ${String(point.turn)} has no completed turn before it to fork from`,
+      })
+    }
 
     const child = destination.kind === 'into'
       ? { ok: true as const, value: destination.session }
@@ -619,7 +631,7 @@ export class FilesnapRewind extends Service {
       point: point.point,
       turn: point.turn,
       child: child.value,
-      boundary: point.boundary,
+      boundary: anchor,
       written,
       deleted,
       failed: failed.length,
@@ -731,14 +743,33 @@ export class FilesnapRewind extends Service {
     signal?: AbortSignal,
   ): Promise<RewindResult<SessionId>> {
     const source = agent.session
-    const seed = source.events.slice(0, point.boundary + 1)
-    const openTurn = seed.findLast(event => event.type === 'turn/start' || event.type === 'turn/end')
-    if (openTurn?.type === 'turn/start') {
+    const anchor = point.boundary
+    if (anchor === undefined) {
       return refuse({
         kind: 'fork-failed',
-        message: `event ${String(point.boundary)} is inside open turn ${String(openTurn.data.turn)}`,
+        message: `turn ${String(point.turn)} has no turn before it to fork from`,
       })
     }
+    // The same rule the host applies in `sessions.fork`, because the two paths
+    // reach the same seam by different doors and a rewind must not mean one
+    // thing from the browser and another from the command: the anchor names a
+    // seq **inside** the last turn the fork keeps, and the cut runs through
+    // that turn's `turn/end` and any standalone appends behind it.
+    //
+    // Located by index rather than by treating a seq as one. Chunk events do
+    // not survive into the persisted log, so seq is sparse there, and the
+    // arithmetic that works on a live array is silently wrong on a resumed one.
+    const events = source.events
+    const endIndex = events.findIndex(event => event.type === 'turn/end' && event.seq >= anchor)
+    if (endIndex === -1) {
+      return refuse({
+        kind: 'fork-failed',
+        message: `the turn holding event ${String(anchor)} has not completed`,
+      })
+    }
+    let cut = endIndex + 1
+    while (cut < events.length && events[cut]?.type !== 'turn/start') cut++
+    const seed = events.slice(0, cut)
     const childId = brandSessionId(`session-${crypto.randomUUID()}`)
     const composition = await this.composition(source)
     try {

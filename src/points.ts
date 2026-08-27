@@ -41,8 +41,15 @@ export interface PointsState {
   readonly points: readonly RewindPoint[]
   /** The turn currently open, so a `user/message` knows which point it labels. */
   readonly openTurn: number | null
-  /** Seq the open turn started at, for the boundary one before it. */
-  readonly openTurnStart: number
+  /**
+   * The most recent assistant message and the turn it belongs to.
+   *
+   * A point for turn N hangs its control under the message that closed turn
+   * N-1, because restoring it lands the workspace where that turn left it.
+   * Held here rather than searched for later: the reader sees each message
+   * once, and the point that wants it arrives afterwards.
+   */
+  readonly lastMessage: { readonly turn: number; readonly id: string; readonly seq: number } | null
   /** Where the last rewind out of this session went, when there was one. */
   readonly lastRewind?: RewindRecord | undefined
 }
@@ -53,7 +60,7 @@ export interface PointsState {
  * @returns a fresh initial state.
  */
 export function initialPoints(): PointsState {
-  return { points: [], openTurn: null, openTurnStart: 0 }
+  return { points: [], openTurn: null, lastMessage: null }
 }
 
 /**
@@ -92,23 +99,32 @@ function label(content: readonly { type: string; text?: string }[]): string | un
 export function reducePoints(state: PointsState, event: SessionEvent): PointsState {
   switch (event.type) {
     case 'turn/start':
-      return { ...state, openTurn: event.data.turn, openTurnStart: event.seq }
+      return { ...state, openTurn: event.data.turn }
     case 'turn/end':
       return state.openTurn === null ? state : { ...state, openTurn: null }
     case 'filesnap/point': {
-      // The capture is placed by the turn it names rather than by whichever
-      // turn happens to be open: a fork can seed a child with a point whose
-      // turn boundaries are already in the seed, and the seq arithmetic has to
-      // follow the recorded turn, not the reader's cursor.
-      const boundary = event.data.turn === state.openTurn ? state.openTurnStart - 1 : event.seq - 1
+      // Anchored on the message that closed the PREVIOUS turn, because that is
+      // the turn a fork has to keep: this point holds the workspace as it was
+      // when that turn finished. Anchoring inside this turn instead — or one
+      // event before it opened, which the host rounds forward to this turn's
+      // own `turn/end` — would keep the turn whose effects the restore undoes,
+      // and the conversation would claim work the files no longer show.
+      const anchor = state.lastMessage?.turn === event.data.turn - 1 ? state.lastMessage : undefined
       const known = state.points.find(point => point.turn === event.data.turn)
       const fresh: RewindPoint = {
         point: event.data.point,
         turn: event.data.turn,
-        boundary,
         at: event.time,
         ...known?.label === undefined ? {} : { label: known.label },
-        ...known?.messageId === undefined ? {} : { messageId: known.messageId },
+        // The anchor and the message it names are one fact, so they are set
+        // together or not at all: a control that renders without a usable
+        // anchor would fork somewhere nobody asked for.
+        ...anchor === undefined
+          ? {
+              ...known?.boundary === undefined ? {} : { boundary: known.boundary },
+              ...known?.messageId === undefined ? {} : { messageId: known.messageId },
+            }
+          : { boundary: anchor.seq, messageId: anchor.id },
         // A log written before the plugin reported these carries neither
         // field; `numberField`-shaped defaults would invent a zero that reads
         // as "nothing tracked" rather than "not recorded".
@@ -127,12 +143,24 @@ export function reducePoints(state: PointsState, event: SessionEvent): PointsSta
       // Recorded on the point rather than derived later: only the log knows
       // which message closed which turn, and the browser sees message ids
       // without seeing turns.
-      const known = state.points.find(point => point.turn === event.data.turn)
-      if (known === undefined || known.messageId === event.data.message.id) return state
+      //
+      // Every message of a turn overwrites the one before it, so what survives
+      // is the last — the bubble the control belongs under. The point that
+      // wants it is the NEXT turn's, which normally arrives later; the update
+      // below covers the seed order where it did not.
+      const lastMessage = { turn: event.data.turn, id: event.data.message.id, seq: event.seq }
+      const target = state.points.find(point => point.turn === event.data.turn + 1)
+      if (target === undefined) return { ...state, lastMessage }
+      if (target.messageId === lastMessage.id && target.boundary === lastMessage.seq) {
+        return { ...state, lastMessage }
+      }
       return {
         ...state,
+        lastMessage,
         points: state.points.map(point =>
-          point.turn === event.data.turn ? { ...point, messageId: event.data.message.id } : point),
+          point.turn === lastMessage.turn + 1
+            ? { ...point, messageId: lastMessage.id, boundary: lastMessage.seq }
+            : point),
       }
     }
     case 'filesnap/rewound':
@@ -159,7 +187,7 @@ export function reducePoints(state: PointsState, event: SessionEvent): PointsSta
       // A message can arrive before its turn's capture. The label is held on
       // the point when one exists and is re-read from the state when the
       // capture lands, so neither has to come first.
-      const placeholder: RewindPoint = { point: '', turn, boundary: state.openTurnStart - 1, at: event.time, label: text }
+      const placeholder: RewindPoint = { point: '', turn, at: event.time, label: text }
       return {
         ...state,
         points: known === undefined

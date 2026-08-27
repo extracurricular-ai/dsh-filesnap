@@ -10,7 +10,7 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
-import { createUserMessage } from '@deepseek-ai/dsh-llm'
+import { createAssistantMessage, createUserMessage } from '@deepseek-ai/dsh-llm'
 import { Session, SessionId } from '@deepseek-ai/dsh-session'
 import type { SessionEvent, SessionHeader } from '@deepseek-ai/dsh-session'
 import { resolveConfig } from '../src/config.ts'
@@ -46,13 +46,39 @@ function agentOn(session: Session, status: 'idle' | 'running' = 'idle'): Agent {
   } as unknown as Agent
 }
 
-/** Open a turn, prompt it, and close it — the shape the loop writes. */
-function runTurn(session: Session, turn: number, text: string, capture: () => void): void {
+/**
+ * Open a turn, prompt it, answer it, and close it — the shape the loop writes.
+ *
+ * The answer is not decoration. A point anchors on the message that closed the
+ * turn before it, so a log without assistant messages produces points no fork
+ * can be built from, and every rewind assertion below would pass or fail for
+ * the wrong reason.
+ */
+async function runTurn(
+  session: Session,
+  turn: number,
+  text: string,
+  capture: () => Promise<void> | void,
+): Promise<void> {
   session.append('turn/start', { turn })
-  capture()
+  // Awaited, not fired: the capture appends the point, and a point that lands
+  // after its own `turn/end` anchors on the wrong message.
+  await capture()
   session.append(
     'user/message',
     createUserMessage({ content: [{ type: 'text', text }], source: { kind: 'user' } }),
+    { surfaceOp: 'append' },
+  )
+  session.append(
+    'assistant/message',
+    {
+      turn,
+      step: 1,
+      message: createAssistantMessage({
+        content: [{ type: 'text', text: `answer to ${text}` }],
+        source: { provider: 'mock', model: 'mock' },
+      }),
+    },
     { surfaceOp: 'append' },
   )
   session.append('turn/end', { turn, reason: { kind: 'completed' } })
@@ -151,10 +177,10 @@ describe.skipIf(BINARY === undefined)('FilesnapRewind', () => {
     const session = sessionAt('session-a', workspace.path)
     const agent = agentOn(session)
     writeFileSync(join(workspace.path, 'a.txt'), 'v1\n')
-    runTurn(session, 1, 'first change', () => {})
+    await runTurn(session, 1, 'first change', () => {})
     // Turn 1 was never captured, so the log has a turn the engine cannot resolve.
     session.append('filesnap/point', { turn: 1, point: 'session-a.t1', manifest: 'gone', reused: 0, hashed: 0, dropped: 0 })
-    runTurn(session, 2, 'second change', () => {})
+    await runTurn(session, 2, 'second change', () => {})
     await service.capture(agent, 2)
 
     const points = await service.points(agent)
@@ -172,25 +198,28 @@ describe.skipIf(BINARY === undefined)('FilesnapRewind', () => {
     writeFileSync(file, 'original\n')
 
     const parent = sessionAt('session-a', workspace.path)
-    parent.append('turn/start', { turn: 1 })
-    await service.capture(agentOn(parent), 1)
-    parent.append('turn/end', { turn: 1, reason: { kind: 'completed' } })
+    const parentAgent = agentOn(parent)
+    await runTurn(parent, 1, 'first', async () => { await service.capture(parentAgent, 1) })
+    await runTurn(parent, 2, 'second', async () => { await service.capture(parentAgent, 2) })
 
     // The child inherits the parent's log and has captured nothing itself.
+    // The assistant messages come across with it: a seed without them carries
+    // points no fork can anchor on, which is not what a fork looks like.
     const child = sessionAt('session-b', workspace.path)
     for (const event of parent.events) {
       if (event.type === 'filesnap/point') child.append('filesnap/point', event.data)
       else if (event.type === 'turn/start') child.append('turn/start', event.data)
       else if (event.type === 'turn/end') child.append('turn/end', event.data)
+      else if (event.type === 'assistant/message') child.append('assistant/message', event.data, { surfaceOp: 'append' })
     }
     const heir = agentOn(child)
 
     const points = await service.points(heir)
     expect(points.ok).toBe(true)
-    expect(points.ok && points.value.map(point => point.point)).toEqual(['session-a.t1'])
+    expect(points.ok && points.value.map(point => point.point)).toEqual(['session-a.t1', 'session-a.t2'])
 
     writeFileSync(file, 'wrecked\n')
-    const outcome = await service.rewind(heir, '1', { kind: 'into', session: SessionId('session-c') })
+    const outcome = await service.rewind(heir, '2', { kind: 'into', session: SessionId('session-c') })
     expect(outcome.ok).toBe(true)
     expect(readFileSync(file, 'utf8')).toBe('original\n')
   })
@@ -201,19 +230,12 @@ describe.skipIf(BINARY === undefined)('FilesnapRewind', () => {
     const agent = agentOn(session)
 
     writeFileSync(file, 'original\n')
-    let captured: Promise<void> | undefined
-    session.append('turn/start', { turn: 1 })
-    captured = service.capture(agent, 1)
-    await captured
-    session.append(
-      'user/message',
-      createUserMessage({ content: [{ type: 'text', text: 'break it' }], source: { kind: 'user' } }),
-      { surfaceOp: 'append' },
-    )
-    session.append('turn/end', { turn: 1, reason: { kind: 'completed' } })
+    await runTurn(session, 1, 'set it up', async () => { await service.capture(agent, 1) })
+    const afterFirstTurn = session.events.length
+    await runTurn(session, 2, 'break it', async () => { await service.capture(agent, 2) })
     writeFileSync(file, 'something regrettable\n')
 
-    const outcome = await service.rewind(agent, '1')
+    const outcome = await service.rewind(agent, '2')
     expect(outcome.ok).toBe(true)
     if (!outcome.ok) return
 
@@ -223,17 +245,22 @@ describe.skipIf(BINARY === undefined)('FilesnapRewind', () => {
     expect(outcome.value.failures).toEqual([])
     expect(outcome.value.safety).toMatch(/^[0-9a-f]{64}$/u)
 
-    // The conversation half cut before the turn opened, and carried the lineage.
+    // The conversation half kept the turn the workspace was handed back from,
+    // and dropped the one being undone. Those two have to agree: a child that
+    // still shows the turn whose writes were just reverted is a conversation
+    // claiming work its files no longer hold.
     expect(forked).toHaveLength(1)
     expect(forked[0]?.parent).toBe('session-a')
-    expect(forked[0]?.seed).toHaveLength(0)
+    expect(forked[0]?.seed).toHaveLength(afterFirstTurn)
+    expect(forked[0]?.seed.at(-1)?.type).toBe('turn/end')
+    expect(forked[0]?.seed.some(event => event.type === 'turn/start' && event.data.turn === 2)).toBe(false)
     expect(outcome.value.child).toBe(forked[0]?.id)
 
     // The source log says where the user went.
     const record = session.events.findLast(event => event.type === 'filesnap/rewound')
     expect(record?.type === 'filesnap/rewound' && record.data).toMatchObject({
-      point: 'session-a.t1',
-      turn: 1,
+      point: 'session-a.t2',
+      turn: 2,
       child: forked[0]?.id,
       written: 1,
       failed: 0,
@@ -246,13 +273,9 @@ describe.skipIf(BINARY === undefined)('FilesnapRewind', () => {
     const agent = agentOn(session)
     writeFileSync(join(workspace.path, 'a.txt'), 'v1\n')
 
-    session.append('turn/start', { turn: 1 })
-    await service.capture(agent, 1)
-    session.append('turn/end', { turn: 1, reason: { kind: 'completed' } })
+    await runTurn(session, 1, 'first', async () => { await service.capture(agent, 1) })
     const afterFirstTurn = session.events.length
-    session.append('turn/start', { turn: 2 })
-    await service.capture(agent, 2)
-    session.append('turn/end', { turn: 2, reason: { kind: 'completed' } })
+    await runTurn(session, 2, 'second', async () => { await service.capture(agent, 2) })
 
     const outcome = await service.rewind(agent, '2')
     expect(outcome.ok).toBe(true)
@@ -265,12 +288,11 @@ describe.skipIf(BINARY === undefined)('FilesnapRewind', () => {
     const session = sessionAt('session-a', workspace.path)
     const agent = agentOn(session)
     writeFileSync(file, 'original\n')
-    session.append('turn/start', { turn: 1 })
-    await service.capture(agent, 1)
-    session.append('turn/end', { turn: 1, reason: { kind: 'completed' } })
+    await runTurn(session, 1, 'set it up', async () => { await service.capture(agent, 1) })
+    await runTurn(session, 2, 'later work', async () => { await service.capture(agent, 2) })
     writeFileSync(file, 'later work\n')
 
-    const rewound = await service.rewind(agent, '1')
+    const rewound = await service.rewind(agent, '2')
     expect(rewound.ok).toBe(true)
     if (!rewound.ok) return
     expect(readFileSync(file, 'utf8')).toBe('original\n')
@@ -291,12 +313,11 @@ describe.skipIf(BINARY === undefined)('FilesnapRewind', () => {
     const session = sessionAt('session-a', workspace.path)
     const agent = agentOn(session)
     writeFileSync(file, 'original\n')
-    session.append('turn/start', { turn: 1 })
-    await service.capture(agent, 1)
-    session.append('turn/end', { turn: 1, reason: { kind: 'completed' } })
+    await runTurn(session, 1, 'set it up', async () => { await service.capture(agent, 1) })
+    await runTurn(session, 2, 'change it', async () => { await service.capture(agent, 2) })
     writeFileSync(file, 'changed\n')
 
-    const outcome = await service.rewind(agent, '1', { kind: 'into', session: SessionId('session-b') })
+    const outcome = await service.rewind(agent, '2', { kind: 'into', session: SessionId('session-b') })
     expect(outcome.ok).toBe(true)
     // The deployment's own fork was used; this plugin built none.
     expect(forked).toHaveLength(0)
@@ -328,12 +349,11 @@ describe.skipIf(BINARY === undefined)('FilesnapRewind', () => {
     writeFileSync(file, 'original\n')
     const session = liveSessionAt(live, 'session-a', workspace.path)
     const agent = agentOn(session)
-    session.append('turn/start', { turn: 1 })
-    await service.capture(agent, 1)
-    session.append('turn/end', { turn: 1, reason: { kind: 'completed' } })
+    await runTurn(session, 1, 'set it up', async () => { await service.capture(agent, 1) })
+    await runTurn(session, 2, 'change it', async () => { await service.capture(agent, 2) })
     writeFileSync(file, 'changed\n')
 
-    const rewound = await service.rewind(agent, '1', { kind: 'into', session: SessionId('session-b') })
+    const rewound = await service.rewind(agent, '2', { kind: 'into', session: SessionId('session-b') })
     expect(rewound.ok).toBe(true)
     expect(rewound.ok && rewound.value.markedTitle).toBe('↩ add a rate limiter')
     expect(titles.get('session-a')).toBe('↩ add a rate limiter')
@@ -375,13 +395,14 @@ describe.skipIf(BINARY === undefined)('FilesnapRewind', () => {
       writeFileSync(file, 'before\n')
       const session = sessionAt('session-a', workspace.path)
       const agent = agentOn(session)
-      session.append('turn/start', { turn: 1 })
-      await service.capture(agent, 1)
-      await service.declare(agent, 1, [file])
-      writeFileSync(file, 'after\n')
-      session.append('turn/end', { turn: 1, reason: { kind: 'completed' } })
+      await runTurn(session, 1, 'look around', async () => { await service.capture(agent, 1) })
+      await runTurn(session, 2, 'edit the config', async () => {
+        await service.capture(agent, 2)
+        await service.declare(agent, 2, [file])
+        writeFileSync(file, 'after\n')
+      })
 
-      expect((await service.rewind(agent, '1')).ok).toBe(true)
+      expect((await service.rewind(agent, '2')).ok).toBe(true)
       expect(readFileSync(file, 'utf8')).toBe('before\n')
     } finally {
       outside.remove()
@@ -392,13 +413,14 @@ describe.skipIf(BINARY === undefined)('FilesnapRewind', () => {
     const created = join(workspace.path, 'new.txt')
     const session = sessionAt('session-a', workspace.path)
     const agent = agentOn(session)
-    session.append('turn/start', { turn: 1 })
-    await service.capture(agent, 1)
-    await service.declare(agent, 1, [created])
-    writeFileSync(created, 'brand new\n')
-    session.append('turn/end', { turn: 1, reason: { kind: 'completed' } })
+    await runTurn(session, 1, 'look around', async () => { await service.capture(agent, 1) })
+    await runTurn(session, 2, 'add a file', async () => {
+      await service.capture(agent, 2)
+      await service.declare(agent, 2, [created])
+      writeFileSync(created, 'brand new\n')
+    })
 
-    const outcome = await service.rewind(agent, '1')
+    const outcome = await service.rewind(agent, '2')
     expect(outcome.ok && outcome.value.deleted).toBe(1)
     expect(existsSync(created)).toBe(false)
   })

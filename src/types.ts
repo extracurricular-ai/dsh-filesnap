@@ -63,7 +63,7 @@ declare module '@deepseek-ai/dsh-session/types' {
       turn: number
       /** The forked session the conversation continues in. */
       child: SessionId
-      /** Source event seq the fork cut through, inclusive. */
+      /** The seq the fork anchored on: inside the last turn the child keeps. */
       boundary: number
       /** Files written by the restore. */
       written: number

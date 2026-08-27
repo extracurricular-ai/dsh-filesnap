@@ -42,7 +42,7 @@ declare module '@deepseek-ai/dsh-session-projection/types' {
 const pointSchema = z.object({
   point: z.string(),
   turn: z.number().int().nonnegative(),
-  boundary: z.number().int(),
+  boundary: z.number().int().optional(),
   at: z.number().int(),
   label: z.string().optional(),
   messageId: z.string().optional(),
@@ -69,7 +69,11 @@ const rewindSchema = z.object({
 const stateSchema = z.object({
   points: z.array(pointSchema),
   openTurn: z.number().int().nonnegative().nullable(),
-  openTurnStart: z.number().int(),
+  lastMessage: z.object({
+    turn: z.number().int().nonnegative(),
+    id: z.string(),
+    seq: z.number().int(),
+  }).nullable(),
   lastRewind: rewindSchema.optional(),
 })
 
@@ -84,7 +88,7 @@ const viewSchema = z.object({
  * rows from an older unit are discarded rather than forward-applied into
  * something that no longer means what it says.
  */
-const STATE_VERSION = 2
+const STATE_VERSION = 3
 
 /**
  * Register the `filesnap` projection when the deployment composes a registry.

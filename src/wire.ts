@@ -20,10 +20,22 @@ export interface RewindPoint {
   /** The harness turn this point precedes. */
   readonly turn: number
   /**
-   * Inclusive source event seq a fork must cut through to land the
-   * conversation where the files land: the event before this turn opened.
+   * The seq a fork anchors on so the conversation lands where the files land:
+   * a seq **inside the last turn the fork keeps**, which is the turn before
+   * this point's own.
+   *
+   * The host does not cut at this seq. `sessions.fork` takes the first
+   * `turn/end` **at or after** the anchor and keeps that whole turn — the same
+   * convention the harness's own per-message fork button uses, where a message
+   * seq means "keep the turn this message belongs to". Anchoring one event
+   * before this turn opened therefore keeps this turn instead of dropping it,
+   * which is the one thing this field must never do.
+   *
+   * Absent until the point knows which message closed the previous turn.
+   * A point with no anchor — the first turn of a session — has no fork to
+   * offer and renders no control.
    */
-  readonly boundary: number
+  readonly boundary?: number | undefined
   /** Epoch ms the turn opened. */
   readonly at: number
   /**

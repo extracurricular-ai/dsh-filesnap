@@ -102,11 +102,20 @@ export function apply(ctx: ClientContext): void {
     locale: NS,
     inject: (sessionId): RewindActions => ({
       onRewind: async (point: RewindPoint): Promise<RewindActionResult> => {
+        // An omitted `atSeq` does not mean "cut at the beginning" — the host
+        // reads it as "the last completed turn", which would fork the newest
+        // state and then restore old files into it. A point with no anchor
+        // renders no control, so this is unreachable; it is checked anyway
+        // because the failure it prevents is silent and looks like success.
+        const atSeq = point.boundary
+        if (atSeq === undefined) {
+          return { ok: false, error: `turn ${String(point.turn)} has no completed turn before it to fork from` }
+        }
         // The fork first, because the host files the undo record in the
         // session named by `--into` and that has to exist before it is named.
         let child: SessionId
         try {
-          child = await sessions.fork({ sessionId, atSeq: point.boundary, increaseTitle: true })
+          child = await sessions.fork({ sessionId, atSeq, increaseTitle: true })
         } catch (error: unknown) {
           return { ok: false, error: String(error) }
         }

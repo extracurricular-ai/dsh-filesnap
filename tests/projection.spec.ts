@@ -53,7 +53,7 @@ describe('the filesnap projection', () => {
 
       expect(view(ctx, session)?.points).toEqual([
         {
-          point: 'session-a.t1', turn: 1, boundary: -1, at: expect.any(Number),
+          point: 'session-a.t1', turn: 1, at: expect.any(Number),
           label: 'add a rate limiter',
           coverage: { reused: 2, hashed: 1, dropped: 0 },
         },
@@ -74,7 +74,7 @@ describe('the filesnap projection', () => {
         point: 'session-a.t1',
         turn: 1,
         child: SessionId('session-b'),
-        boundary: -1,
+        boundary: 3,
         written: 3,
         deleted: 0,
         failed: 0,
@@ -141,7 +141,7 @@ describe('the filesnap projection', () => {
       const value = restored.snapshot.values.filesnap
       expect(value?.points).toEqual([
         {
-          point: 'session-a.t1', turn: 1, boundary: -1, at: expect.any(Number),
+          point: 'session-a.t1', turn: 1, at: expect.any(Number),
           coverage: { reused: 2, hashed: 1, dropped: 0 },
         },
       ])

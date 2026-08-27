@@ -14,15 +14,36 @@ function log(...entries: readonly { type: string; data: unknown; time?: number }
 
 /**
  * One captured turn in the order the loop writes it: the turn opens, pre-step
- * captures, the entered message is appended, the turn closes.
+ * captures, the entered message is appended, the assistant answers, the turn
+ * closes.
  */
 function turn(n: number, text: string): { type: string; data: unknown }[] {
   return [
     { type: 'turn/start', data: { turn: n } },
     { type: 'filesnap/point', data: { turn: n, point: `s.t${String(n)}`, manifest: 'm', reused: 0, hashed: 0, dropped: 0 } },
     { type: 'user/message', data: { role: 'user', content: [{ type: 'text', text }], source: { kind: 'user' } } },
+    { type: 'assistant/message', data: { turn: n, message: { id: `m${String(n)}`, content: [{ type: 'text', text: 'done' }] } } },
     { type: 'turn/end', data: { turn: n, reason: 'natural' } },
   ]
+}
+
+/**
+ * The host's own fork rule, from `sessions.fork`: the anchor names a seq
+ * inside the turn to keep, and the cut runs through the first `turn/end` at
+ * or after it.
+ *
+ * Reproduced here rather than mocked, because the bug this guards against was
+ * a plugin that agreed with itself about a rule the host does not follow.
+ *
+ * @param events - the source log.
+ * @param atSeq - the anchor handed to the host.
+ * @returns the turns the child would keep.
+ */
+function turnsKeptByHost(events: readonly SessionEvent[], atSeq: number): number[] {
+  const end = events.find(event => event.type === 'turn/end' && event.seq >= atSeq)
+  if (end === undefined) return []
+  const last = (end.data as { turn: number }).turn
+  return Array.from({ length: last }, (_unused, index) => index + 1)
 }
 
 describe('foldPoints', () => {
@@ -32,14 +53,38 @@ describe('foldPoints', () => {
     expect(points.map(point => point.point)).toEqual(['s.t1', 's.t2'])
   })
 
-  it('puts the boundary before the turn opened, never inside it', () => {
-    // A fork rejects a prefix ending inside an open turn, and cutting at the
-    // `turn/start` itself would hand the child a turn it never ran.
+  it('anchors a point on the message that closed the turn before it', () => {
+    // The anchor is not a cut. `sessions.fork` rounds it forward to the first
+    // `turn/end` at or after it and keeps that whole turn, so an anchor placed
+    // one event before this turn opened lands on this turn's own end and keeps
+    // the very turn the restore undoes.
     const events = log(...turn(1, 'first'), ...turn(2, 'second'))
     const points = foldPoints(events)
-    expect(points[0]?.boundary).toBe(-1)
     expect(points[1]?.boundary).toBe(3)
-    expect(events[3]?.type).toBe('turn/end')
+    expect(events[3]?.type).toBe('assistant/message')
+    expect(points[1]?.messageId).toBe('m1')
+  })
+
+  it('anchors so the host keeps exactly the turns the restore leaves standing', () => {
+    // The property that matters, checked through the host's rule rather than
+    // through the number: restoring the point for turn N puts the workspace
+    // where turn N-1 left it, so the child must end at turn N-1.
+    const events = log(...turn(1, 'first'), ...turn(2, 'second'), ...turn(3, 'third'))
+    const points = foldPoints(events)
+    for (const point of points) {
+      if (point.boundary === undefined) continue
+      expect(turnsKeptByHost(events, point.boundary)).toEqual(
+        Array.from({ length: point.turn - 1 }, (_unused, index) => index + 1))
+    }
+  })
+
+  it('offers no anchor for the first turn, which has no turn to keep', () => {
+    // A fork needs a completed turn to end on. Refusing here is what stops the
+    // browser from calling `sessions.fork` with no `atSeq`, which the host
+    // reads as "the last completed turn" — the newest state, not the oldest.
+    const points = foldPoints(log(...turn(1, 'first')))
+    expect(points[0]?.boundary).toBeUndefined()
+    expect(points[0]?.messageId).toBeUndefined()
   })
 
   it('labels a point with the message that opened its turn', () => {
@@ -123,7 +168,8 @@ describe('foldPoints', () => {
       ...turn(2, 'own work'),
     ))
     expect(points.map(point => point.turn)).toEqual([1, 2])
-    expect(points[1]?.boundary).toBe(4)
+    expect(points[1]?.boundary).toBe(3)
+    expect(points[1]?.messageId).toBe('m1')
   })
 
   it('reports nothing for a session that has captured nothing', () => {

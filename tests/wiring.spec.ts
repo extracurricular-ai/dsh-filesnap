@@ -22,7 +22,7 @@ import { Context } from '@deepseek-ai/cordis'
 import { agentEvents } from '@deepseek-ai/dsh-agent'
 import type { Agent, PreStepDecision } from '@deepseek-ai/dsh-agent'
 import CommandRuntime from '@deepseek-ai/dsh-commands'
-import { createUserMessage } from '@deepseek-ai/dsh-llm'
+import { createAssistantMessage, createUserMessage } from '@deepseek-ai/dsh-llm'
 import { KNOWN_SESSION_EVENT_TYPES, Session, SessionId } from '@deepseek-ai/dsh-session'
 import type { SessionHeader } from '@deepseek-ai/dsh-session'
 import { apply, FILESNAP_EVENT_TYPES } from '../src/index.ts'
@@ -38,6 +38,55 @@ function agentAt(id: string, cwd: string): Agent & { session: Session } {
     status: 'idle',
     options: { provider: 'mock', model: 'mock' },
   } as unknown as Agent & { session: Session }
+}
+
+/**
+ * Drive one turn the way the loop does: open it, let the real `agent/pre-step`
+ * waterfall run, prompt it, answer it, close it. `work` runs while the turn is
+ * open, which is where a tool's writes and any `fs/*-intent` traffic belong.
+ *
+ * The assistant answer is load-bearing rather than scenery: a rewind point
+ * anchors its fork on the message that closed the turn before it, so a log
+ * without answers offers points no fork can be built from.
+ *
+ * @param ctx - the mounted context.
+ * @param agent - the agent whose session is driven.
+ * @param turn - the turn to open.
+ * @param text - the user's prompt for that turn.
+ * @param work - what happens inside the turn.
+ */
+async function dispatchTurn(
+  ctx: Context,
+  agent: Agent,
+  turn: number,
+  text: string,
+  work: () => Promise<void> | void = () => {},
+): Promise<void> {
+  agent.session.append('turn/start', { turn })
+  await agentEvents(ctx, agent).waterfall(
+    'agent/pre-step',
+    { messages: [], turn, step: 1, signal: new AbortController().signal },
+    (): Promise<PreStepDecision> => Promise.resolve({ kind: 'enter', messages: [] }),
+  )
+  agent.session.append(
+    'user/message',
+    createUserMessage({ content: [{ type: 'text', text }], source: { kind: 'user' } }),
+    { surfaceOp: 'append' },
+  )
+  await work()
+  agent.session.append(
+    'assistant/message',
+    {
+      turn,
+      step: 1,
+      message: createAssistantMessage({
+        content: [{ type: 'text', text: `answer to ${text}` }],
+        source: { provider: 'mock', model: 'mock' },
+      }),
+    },
+    { surfaceOp: 'append' },
+  )
+  agent.session.append('turn/end', { turn, reason: { kind: 'completed' } })
 }
 
 describe.skipIf(BINARY === undefined)('the plugin as a deployment mounts it', () => {
@@ -130,23 +179,13 @@ describe.skipIf(BINARY === undefined)('the plugin as a deployment mounts it', ()
     const agent = agentAt('session-a', workspace.path)
     const file = join(workspace.path, 'notes.txt')
     writeFileSync(file, 'original\n')
-    agent.session.append('turn/start', { turn: 1 })
-    await agentEvents(ctx, agent).waterfall(
-      'agent/pre-step',
-      { messages: [], turn: 1, step: 1, signal: new AbortController().signal },
-      (): Promise<PreStepDecision> => Promise.resolve({ kind: 'enter', messages: [] }),
-    )
-    agent.session.append(
-      'user/message',
-      createUserMessage({ content: [{ type: 'text', text: 'wreck it' }], source: { kind: 'user' } }),
-      { surfaceOp: 'append' },
-    )
-    agent.session.append('turn/end', { turn: 1, reason: { kind: 'completed' } })
+    await dispatchTurn(ctx, agent, 1, 'look around')
+    await dispatchTurn(ctx, agent, 2, 'wreck it')
     writeFileSync(file, 'wrecked\n')
 
     const service = ctx.get('filesnap')
     expect(service).toBeDefined()
-    const outcome = await service!.rewind(agent, '1', { kind: 'into', session: SessionId('session-b') })
+    const outcome = await service!.rewind(agent, '2', { kind: 'into', session: SessionId('session-b') })
     expect(outcome.ok).toBe(true)
     expect(readFileSync(file, 'utf8')).toBe('original\n')
   })
@@ -167,27 +206,22 @@ describe.skipIf(BINARY === undefined)('the plugin as a deployment mounts it', ()
       writeFileSync(file, 'before the edit\n')
 
       const agent = agentAt('session-a', workspace.path)
-      agent.session.append('turn/start', { turn: 1 })
-      await agentEvents(ctx, agent).waterfall(
-        'agent/pre-step',
-        { messages: [], turn: 1, step: 1, signal: new AbortController().signal },
-        (): Promise<PreStepDecision> => Promise.resolve({ kind: 'enter', messages: [] }),
-      )
+      await dispatchTurn(ctx, agent, 1, 'look around')
+      await dispatchTurn(ctx, agent, 2, 'edit the config', async () => {
+        const target = { targetKey: file as never, displayPath: file }
+        const intent = await ctx.agents.withInitiator(agent, () => ctx.waterfall(
+          'fs/edit-intent', target, undefined,
+          () => Promise.resolve(undefined),
+        ))
 
-      const target = { targetKey: file as never, displayPath: file }
-      const intent = await ctx.agents.withInitiator(agent, () => ctx.waterfall(
-        'fs/edit-intent', target, undefined,
-        () => Promise.resolve(undefined),
-      ))
+        // The policy still decided; this plugin only observed on the way past.
+        expect(decided).toEqual([file])
+        expect(intent).toEqual({ version: 'v1' })
 
-      // The policy still decided; this plugin only observed on the way past.
-      expect(decided).toEqual([file])
-      expect(intent).toEqual({ version: 'v1' })
+        writeFileSync(file, 'after the edit\n')
+      })
 
-      writeFileSync(file, 'after the edit\n')
-      agent.session.append('turn/end', { turn: 1, reason: { kind: 'completed' } })
-
-      const outcome = await ctx.get('filesnap')!.rewind(agent, '1', { kind: 'into', session: SessionId('session-b') })
+      const outcome = await ctx.get('filesnap')!.rewind(agent, '2', { kind: 'into', session: SessionId('session-b') })
       expect(outcome.ok).toBe(true)
       expect(readFileSync(file, 'utf8')).toBe('before the edit\n')
     } finally {
