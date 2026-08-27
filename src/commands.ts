@@ -14,10 +14,9 @@
  * @module
  */
 
-import type { Context } from '@deepseek-ai/cordis'
-import type { CommandInvocation, CommandResult } from '@deepseek-ai/dsh-commands'
+import type { CommandRuntime, CommandInvocation, CommandResult } from '@deepseek-ai/dsh-commands'
 import { SessionId } from '@deepseek-ai/dsh-session'
-import type { RewindDestination } from './service.ts'
+import type { FilesnapRewind, RewindDestination } from './service.ts'
 import type { RedoOutcome, RewindOutcome, RewindPoint, RewindRefusal } from './types.ts'
 
 /** What `/rewind` accepts, echoed back on a usage error. */
@@ -178,54 +177,62 @@ function redoResult(outcome: RedoOutcome): CommandResult {
 /**
  * Execute one `/rewind` invocation.
  *
- * @param ctx - a context carrying `ctx.filesnap`.
+ * @param service - the rewind service.
  * @param invocation - the dispatching UI's invocation.
  * @returns the command result a UI shows.
  */
-async function runRewind(ctx: Context, invocation: CommandInvocation): Promise<CommandResult> {
+async function runRewind(service: FilesnapRewind, invocation: CommandInvocation): Promise<CommandResult> {
   const command = parseRewind(invocation.rawInput)
   if (command.kind === 'usage') return { kind: 'error', text: REWIND_USAGE }
   if (command.kind === 'list') {
-    const points = await ctx.filesnap.points(invocation.agent, invocation.signal)
+    const points = await service.points(invocation.agent, invocation.signal)
     return points.ok ? listResult(points.value) : refusalResult(points.refusal)
   }
   const destination: RewindDestination = command.into === undefined
     ? { kind: 'fork' }
     : { kind: 'into', session: SessionId(command.into) }
-  const outcome = await ctx.filesnap.rewind(invocation.agent, command.selector, destination, invocation.signal)
+  const outcome = await service.rewind(invocation.agent, command.selector, destination, invocation.signal)
   return outcome.ok ? rewindResult(outcome.value) : refusalResult(outcome.refusal)
 }
 
 /**
  * Execute one `/redo` invocation.
  *
- * @param ctx - a context carrying `ctx.filesnap`.
+ * @param service - the rewind service.
  * @param invocation - the dispatching UI's invocation.
  * @returns the command result a UI shows.
  */
-async function runRedo(ctx: Context, invocation: CommandInvocation): Promise<CommandResult> {
+async function runRedo(service: FilesnapRewind, invocation: CommandInvocation): Promise<CommandResult> {
   if (invocation.rawInput.trim() !== '') {
     return { kind: 'error', text: 'Usage: /redo — reverses the rewind that landed in this session. It takes no argument.' }
   }
-  const outcome = await ctx.filesnap.redo(invocation.agent, invocation.signal)
+  const outcome = await service.redo(invocation.agent, invocation.signal)
   return outcome.ok ? redoResult(outcome.value) : refusalResult(outcome.refusal)
 }
 
 /**
- * Register both commands, when the deployment has a command registry.
+ * Register both commands on a resolved command registry.
  *
- * @param ctx - a context carrying `ctx.commands` and `ctx.filesnap`.
+ * **The registry is passed in, not read off the context.** Cordis refuses a
+ * property read for a service the plugin has not declared in `inject`, and
+ * declaring `commands` would hold this plugin PENDING in a headless assembly
+ * that mounts none. The caller resolves it through `ctx.get`, which is allowed
+ * and still returns a traced service, so these registrations remain effects of
+ * the calling fiber and unwind with it.
+ *
+ * @param commands - the resolved command registry.
+ * @param service - the rewind service the handlers call.
  */
-export function registerCommands(ctx: Context): void {
-  ctx.commands.register({
+export function registerCommands(commands: CommandRuntime, service: FilesnapRewind): void {
+  commands.register({
     name: 'rewind',
     description: 'put the workspace and the conversation back to the start of an earlier turn',
     input: { hint: '[<turn>|<point id>] [--into <session id>]' },
-    handler: invocation => runRewind(ctx, invocation),
+    handler: invocation => runRewind(service, invocation),
   })
-  ctx.commands.register({
+  commands.register({
     name: 'redo',
     description: 'reverse the rewind that landed in this session',
-    handler: invocation => runRedo(ctx, invocation),
+    handler: invocation => runRedo(service, invocation),
   })
 }

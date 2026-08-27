@@ -288,8 +288,8 @@ plugin.
 `harness:link` also has to be re-run after any `npm install`: npm prunes what
 `package.json` does not name, and these links are deliberately not named there.
 
-The suite has three tiers. `npm run test:standalone` needs neither the harness
-nor the binary. The engine and service suites drive the real `filesnap`
+The suite has four tiers. `npm run test:standalone` needs neither the harness
+nor the binary. The engine, service and wiring suites drive the real `filesnap`
 command and self-skip when none is built — set `FILESNAP_BIN`, or leave a
 `../filesnap` checkout with `cargo build --release -p filesnap-cli` run in it.
 
@@ -322,6 +322,14 @@ includes this plugin already has a checkout.
 - **The browser half is typecheck-verified and built, not browser-tested.** The
   artifact is the shell's own format and the two faces compile against the
   harness's declarations, but no test drives the rendered menu.
+- **A plugin that reads an undeclared service as a property is torn down in
+  silence.** Cordis refuses the read, the throw leaves the service constructor,
+  and the fiber is disposed with no log line — so the plugin is simply absent.
+  This one resolves `commands`, `fs`, `agentPresets` and the logger through
+  `ctx.get`, and `tests/wiring.spec.ts` exists to keep it that way: it asserts
+  the service is still reachable after boot and that a dispatched turn reaches
+  the engine. The service-tier tests cannot see that failure, because calling a
+  method directly proves nothing about whether a turn ever arrives.
 - **A turn whose capture failed offers no rewind point.** The failure is on
   stderr; the point is absent rather than listed and refused on use.
 - **Coverage of shell-written files follows the scan.** A file a shell command

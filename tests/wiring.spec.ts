@@ -1,0 +1,140 @@
+/**
+ * The plugin as a deployment mounts it: `apply` on a real context, the real
+ * agent dispatch, and a command registry present.
+ *
+ * This tier exists because the service tier cannot see the failure it covers.
+ * Calling `service.capture()` directly proves the operation; it proves nothing
+ * about whether a turn ever reaches it. A first version of this plugin
+ * registered its listeners on a `ctx.inject(…)` child fiber and read
+ * `ctx.commands` as a property — cordis disposed the child as soon as its
+ * callback returned, and refused the undeclared property read, so the whole
+ * service fiber was torn down five milliseconds after it was built. Every
+ * service-tier test still passed, and no turn was ever captured.
+ *
+ * So the assertions here are deliberately about the wiring, not the work: the
+ * fiber is still alive after boot, and a dispatched turn reaches the engine.
+ */
+
+import { readFileSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { Context } from '@deepseek-ai/cordis'
+import { agentEvents } from '@deepseek-ai/dsh-agent'
+import type { Agent, PreStepDecision } from '@deepseek-ai/dsh-agent'
+import CommandRuntime from '@deepseek-ai/dsh-commands'
+import { createUserMessage } from '@deepseek-ai/dsh-llm'
+import { Session, SessionId } from '@deepseek-ai/dsh-session'
+import type { SessionHeader } from '@deepseek-ai/dsh-session'
+import { apply } from '../src/index.ts'
+import { BINARY, nodeSubprocess, scratch } from './support.ts'
+
+/** A session bound to a working directory, and the slice of `Agent` this plugin reads. */
+function agentAt(id: string, cwd: string): Agent & { session: Session } {
+  const header: SessionHeader = { version: 0, id: SessionId(id), createdAt: 1_700_000_000_000, cwd }
+  const session = Session.create(SessionId(id), undefined, header)
+  return {
+    id: session.header.id,
+    session,
+    status: 'idle',
+    options: { provider: 'mock', model: 'mock' },
+  } as unknown as Agent & { session: Session }
+}
+
+describe.skipIf(BINARY === undefined)('the plugin as a deployment mounts it', () => {
+  let workspace: ReturnType<typeof scratch>
+  let store: ReturnType<typeof scratch>
+  let ctx: Context
+  let fiber: Awaited<ReturnType<Context['plugin']>>
+
+  beforeEach(async () => {
+    workspace = scratch('filesnap-wiring-ws')
+    store = scratch('filesnap-wiring-store')
+    ctx = new Context()
+    ctx.provide('subprocess', nodeSubprocess())
+    ctx.provide('agents', {
+      currentInitiator: () => undefined,
+      create: () => Promise.resolve({}),
+    })
+    // Present, and deliberately NOT in this plugin's `inject`: reading it as a
+    // property is what cordis refuses, and what the plugin must therefore not do.
+    await ctx.plugin(CommandRuntime)
+    fiber = await ctx.plugin(
+      { name: 'dsh-filesnap', apply },
+      /* v8 ignore next -- the binary is required for this suite to run at all */
+      { command: BINARY ?? '', dataDir: store.path, timeoutMs: 60_000 },
+    )
+  })
+
+  afterEach(async () => {
+    await fiber.dispose()
+    workspace.remove()
+    store.remove()
+  })
+
+  it('leaves the service alive and reachable after boot', () => {
+    // A torn-down fiber takes its service with it, so this one read is the
+    // whole assertion: the failure it catches is silent, and showed up here as
+    // `undefined`.
+    expect(ctx.get('filesnap')).toBeDefined()
+  })
+
+  it('registers its commands without touching an undeclared service', () => {
+    const agent = agentAt('session-a', workspace.path)
+    const names = ctx.get('commands')?.list(agent).map(command => command.name) ?? []
+    expect(names).toContain('rewind')
+    expect(names).toContain('redo')
+  })
+
+  it('captures the workspace when a real turn dispatches pre-step', async () => {
+    const agent = agentAt('session-a', workspace.path)
+    writeFileSync(join(workspace.path, 'notes.txt'), 'original\n')
+    agent.session.append('turn/start', { turn: 1 })
+
+    // The loop's own dispatch, carrier and all — not a direct method call.
+    const decision = await agentEvents(ctx, agent).waterfall(
+      'agent/pre-step',
+      { messages: [], turn: 1, step: 1, signal: new AbortController().signal },
+      (): Promise<PreStepDecision> => Promise.resolve({ kind: 'enter', messages: [] }),
+    )
+    expect(decision.kind).toBe('enter')
+
+    const point = agent.session.events.find(event => event.type === 'filesnap/point')
+    expect(point?.type === 'filesnap/point' && point.data.point).toBe('session-a.t1')
+  })
+
+  it('puts the workspace back through the point a dispatched turn recorded', async () => {
+    const agent = agentAt('session-a', workspace.path)
+    const file = join(workspace.path, 'notes.txt')
+    writeFileSync(file, 'original\n')
+    agent.session.append('turn/start', { turn: 1 })
+    await agentEvents(ctx, agent).waterfall(
+      'agent/pre-step',
+      { messages: [], turn: 1, step: 1, signal: new AbortController().signal },
+      (): Promise<PreStepDecision> => Promise.resolve({ kind: 'enter', messages: [] }),
+    )
+    agent.session.append(
+      'user/message',
+      createUserMessage({ content: [{ type: 'text', text: 'wreck it' }], source: { kind: 'user' } }),
+      { surfaceOp: 'append' },
+    )
+    agent.session.append('turn/end', { turn: 1, reason: { kind: 'completed' } })
+    writeFileSync(file, 'wrecked\n')
+
+    const service = ctx.get('filesnap')
+    expect(service).toBeDefined()
+    const outcome = await service!.rewind(agent, '1', { kind: 'into', session: SessionId('session-b') })
+    expect(outcome.ok).toBe(true)
+    expect(readFileSync(file, 'utf8')).toBe('original\n')
+  })
+
+  it('does not capture a step the deployment rejected', async () => {
+    const agent = agentAt('session-a', workspace.path)
+    agent.session.append('turn/start', { turn: 1 })
+    await agentEvents(ctx, agent).waterfall(
+      'agent/pre-step',
+      { messages: [], turn: 1, step: 1, signal: new AbortController().signal },
+      (): Promise<PreStepDecision> => Promise.resolve({ kind: 'reject' }),
+    )
+    expect(agent.session.events.some(event => event.type === 'filesnap/point')).toBe(false)
+  })
+})

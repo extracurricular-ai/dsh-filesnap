@@ -18,9 +18,11 @@
  */
 
 import { Context, Service } from '@deepseek-ai/cordis'
-import type { Agent } from '@deepseek-ai/dsh-agent'
+import type { Agent, PreStepDecision } from '@deepseek-ai/dsh-agent'
+import type { FsTarget, FsVersion, FsWriteIntent } from '@deepseek-ai/dsh-fs'
 import type { Session, SessionEvent, SessionId } from '@deepseek-ai/dsh-session'
 import { SessionId as brandSessionId } from '@deepseek-ai/dsh-session'
+import { registerCommands } from './commands.ts'
 import type { FilesnapCli, FilesnapRun } from './cli.ts'
 import { createFilesnapCli, eventsOfType, lastEvent, numberField, stringField } from './cli.ts'
 import { explain, pointId, sessionId as admitSessionId } from './ids.ts'
@@ -68,6 +70,21 @@ function engineRefusal<T>(run: FilesnapRun, what: string): RewindResult<T> {
   return refuse({ kind: 'engine', message: `${what}: ${detail}` })
 }
 
+/**
+ * The turn currently open in a session.
+ *
+ * Read from the log rather than tracked in memory: a resumed session is mid
+ * conversation the moment it loads, and a counter starting at zero would file
+ * its next capture under a turn id an earlier one already holds.
+ *
+ * @param session - the session to read.
+ * @returns the open turn's number, or 0 when no turn has opened.
+ */
+export function currentTurn(session: Session): number {
+  const last = session.events.findLast(event => event.type === 'turn/start')
+  return last?.type === 'turn/start' ? last.data.turn : 0
+}
+
 /** Per-file failures, named individually because a terminal list has no bound (filesnap D40). */
 function failures(run: FilesnapRun): { path: string; error: string }[] {
   return eventsOfType(run, 'restore.failed').map(event => ({
@@ -105,6 +122,85 @@ export class FilesnapRewind extends Service {
   constructor(ctx: Context, config: FilesnapConfig) {
     super(ctx, 'filesnap')
     this.config = config
+
+    // **Registered here, on the service's own fiber.** An earlier version put
+    // these on a `ctx.inject(['filesnap'], …)` child so they could not run
+    // before the service existed. That child is disposed as soon as its
+    // callback returns, and cordis unwinds a disposed fiber's effects — so the
+    // listeners vanished, silently, and no turn was ever captured. A service
+    // that registers its own listeners cannot drift out of step with itself.
+
+    // After `next()`, so a step the deployment rejects does not pay for a scan
+    // of the tree — and still before `step/start`, the model request, and every
+    // tool the step goes on to call.
+    ctx.on('agent/pre-step', async ({ agent, turn, signal }, next): Promise<PreStepDecision> => {
+      const decision = await next()
+      if (decision.kind === 'enter') await this.capture(agent, turn, signal)
+      return decision
+    })
+
+    if (config.declareEdits) {
+      // Both are single-slot decision waterfalls: the first listener that
+      // returns an intent owns the decision. This one owns nothing — it records
+      // and then delegates, so whichever policy the deployment mounted still
+      // decides.
+      ctx.on('fs/write-intent', async (target, _actor, next): Promise<FsWriteIntent | undefined> => {
+        await this.declareTarget(target)
+        return next()
+      })
+      ctx.on('fs/edit-intent', async (target, _actor, next): Promise<{ version: FsVersion } | undefined> => {
+        await this.declareTarget(target)
+        return next()
+      })
+    }
+
+    // Command availability follows plugin composition, and a headless run has
+    // no registry at all. The service stays reachable either way.
+    const commands = ctx.get('commands')
+    if (commands !== undefined) registerCommands(commands, this)
+  }
+
+  /**
+   * Report something a person may need to see.
+   *
+   * The logger is resolved through `ctx.get` rather than read as `ctx.logger`,
+   * for the same reason the command registry is: cordis refuses a property
+   * read for an undeclared service, and declaring the logger would hold this
+   * fiber PENDING in an assembly that mounts none. Without one the line goes to
+   * stderr, which is where prose belongs anyway.
+   *
+   * @param message - the line to report.
+   */
+  private warn(message: string): void {
+    const logger = this.ctx.get('logger')
+    if (logger === undefined) console.error(message)
+    else logger.warn(message)
+  }
+
+  /**
+   * Record one path's pre-edit state, if there is an agent to attribute it to.
+   *
+   * The filesystem waterfalls carry an opaque tool-execution context rather
+   * than an agent, so the agent comes from the initiator scope the driver
+   * established. A mutation with no initiator — a plugin writing on its own
+   * account — is not part of any turn and is left alone.
+   *
+   * @param target - the resolved target about to change.
+   */
+  private async declareTarget(target: FsTarget): Promise<void> {
+    let agent: Agent | undefined
+    try {
+      agent = this.ctx.agents.currentInitiator()
+    } catch {
+      // The registry is disposed, which means the tree is coming down. A
+      // missing pre-image matters less than a teardown that throws out of a
+      // file write.
+      return
+    }
+    if (agent === undefined) return
+    const fs = this.ctx.get('fs')
+    if (fs === undefined) return
+    await this.declare(agent, currentTurn(agent.session), [fs.processPath(target)])
   }
 
   /**
@@ -174,7 +270,7 @@ export class FilesnapRewind extends Service {
     const state: TrackState = { binding, captured, declared: new Map() }
     this.tracked.set(session, state)
     if (!binding.ok) {
-      this.ctx.logger.warn(`filesnap: session "${session.id}" is not being tracked — ${binding.why}`)
+      this.warn(`filesnap: session "${session.id}" is not being tracked — ${binding.why}`)
     }
     return state
   }
@@ -201,7 +297,7 @@ export class FilesnapRewind extends Service {
     if (!state.binding.ok || state.captured.has(turn)) return
     const point = pointId(state.binding.id, turn)
     if (!point.ok) {
-      this.ctx.logger.warn(
+      this.warn(
         `filesnap: turn ${String(turn)} of "${session.id}" cannot be captured — `
         + `the point id would be refused because ${explain(point.refusal)}`,
       )
@@ -209,7 +305,7 @@ export class FilesnapRewind extends Service {
     }
     const cli = await this.invoker()
     if ('unavailable' in cli) {
-      this.ctx.logger.warn(`filesnap: no capture for turn ${String(turn)} — ${cli.unavailable}`)
+      this.warn(`filesnap: no capture for turn ${String(turn)} — ${cli.unavailable}`)
       return
     }
     // Marked before the await settles rather than after: a second pre-step for
@@ -223,13 +319,13 @@ export class FilesnapRewind extends Service {
     )
     if (run.exit !== 'ok') {
       state.captured.delete(turn)
-      this.ctx.logger.warn(`filesnap: capture of turn ${String(turn)} did not complete — ${run.stderr}`)
+      this.warn(`filesnap: capture of turn ${String(turn)} did not complete — ${run.stderr}`)
       return
     }
     const done = lastEvent(run, 'capture.done')
     if (done === undefined) {
       state.captured.delete(turn)
-      this.ctx.logger.warn(`filesnap: capture of turn ${String(turn)} reported no terminal event`)
+      this.warn(`filesnap: capture of turn ${String(turn)} reported no terminal event`)
       return
     }
     session.append('filesnap/point', {
@@ -284,7 +380,7 @@ export class FilesnapRewind extends Service {
       // Forget them, so the next edit of the same file tries again. The
       // pre-image is the one thing that cannot be recovered later.
       for (const path of fresh) seen.delete(path)
-      this.ctx.logger.warn(`filesnap: could not record pre-edit state for ${fresh.join(', ')} — ${run.stderr}`)
+      this.warn(`filesnap: could not record pre-edit state for ${fresh.join(', ')} — ${run.stderr}`)
     }
   }
 
