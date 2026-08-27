@@ -77,11 +77,11 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/extracurricular-ai/file-snap-plugin.git"
+    "url": "git+https://github.com/extracurricular-ai/dsh-filesnap.git"
   },
-  "homepage": "https://github.com/extracurricular-ai/file-snap-plugin#readme",
+  "homepage": "https://github.com/extracurricular-ai/dsh-filesnap#readme",
   "bugs": {
-    "url": "https://github.com/extracurricular-ai/file-snap-plugin/issues"
+    "url": "https://github.com/extracurricular-ai/dsh-filesnap/issues"
   },
   "dependencies": {
     "zod": "^4.4.3"
