@@ -108,8 +108,13 @@ export interface RewindPoint {
    * First line of the user message that opened the turn, trimmed for a list —
    * absent for a turn that entered no user message, or one whose message is
    * not text.
+   *
+   * `| undefined` because this value round-trips through JSON, both to the
+   * browser and through the projection cache. Producers still omit the key
+   * rather than writing `undefined` into it: a serialized `undefined` is a
+   * key that vanishes, which is not the value that went in.
    */
-  readonly label?: string
+  readonly label?: string | undefined
 }
 
 /** What a completed rewind did. */

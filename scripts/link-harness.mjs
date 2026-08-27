@@ -17,6 +17,9 @@
  *   npm run harness:link
  *
  * Pass a path, or set `DSH_HARNESS`, when the checkout is somewhere else.
+ *
+ * Re-run it after any `npm install`: npm prunes what `package.json` does not
+ * name, and these links are deliberately not named there.
  */
 
 import { existsSync, mkdirSync, readFileSync, rmSync, symlinkSync } from 'node:fs'
@@ -32,6 +35,7 @@ const PACKAGES = [
   'packages/fs/fs',
   'packages/interaction/commands',
   'packages/preset/agent-presets',
+  'packages/session/session-projection',
 ]
 
 const harness = resolve(process.argv[2] ?? process.env.DSH_HARNESS ?? '../deepseek-harness')

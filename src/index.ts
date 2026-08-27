@@ -27,6 +27,7 @@ import type { Session } from '@deepseek-ai/dsh-session'
 import type { FsTarget, FsVersion, FsWriteIntent } from '@deepseek-ai/dsh-fs'
 import { registerCommands } from './commands.ts'
 import { resolveConfig } from './config.ts'
+import { registerProjection } from './projection.ts'
 import { FilesnapRewind } from './service.ts'
 import type {} from './types.ts'
 
@@ -34,7 +35,11 @@ export { DEFAULTS, resolveConfig } from './config.ts'
 export type { FilesnapConfig } from './config.ts'
 export { FilesnapRewind } from './service.ts'
 export type { RewindDestination } from './service.ts'
-export { foldPoints, reconcile, selectPoint } from './points.ts'
+export { parseRewind } from './commands.ts'
+export type { RewindCommand } from './commands.ts'
+export { capturedPoints, foldPoints, initialPoints, reconcile, reducePoints, selectPoint } from './points.ts'
+export type { PointsState } from './points.ts'
+export type { FilesnapProjection } from './projection.ts'
 export type {
   RedoOutcome,
   RewindOutcome,
@@ -104,6 +109,10 @@ async function declareTarget(ctx: Context, target: FsTarget): Promise<void> {
 export function apply(ctx: Context, config: unknown): void {
   const resolved = resolveConfig(config)
   ctx.plugin(FilesnapRewind, resolved)
+
+  // The browser's view of the rewind points. Registered through `ctx.inject`,
+  // so a headless assembly with no projection registry is unaffected.
+  registerProjection(ctx)
 
   // Every attachment below calls the service, so they are registered on a
   // context that waits for it. Registering them beside the child plugin would

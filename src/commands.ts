@@ -16,10 +16,47 @@
 
 import type { Context } from '@deepseek-ai/cordis'
 import type { CommandInvocation, CommandResult } from '@deepseek-ai/dsh-commands'
+import { SessionId } from '@deepseek-ai/dsh-session'
+import type { RewindDestination } from './service.ts'
 import type { RedoOutcome, RewindOutcome, RewindPoint, RewindRefusal } from './types.ts'
 
 /** What `/rewind` accepts, echoed back on a usage error. */
-const REWIND_USAGE = 'Usage: /rewind [<turn>|<point id>] — with no argument, lists the points this session can return to.'
+const REWIND_USAGE = 'Usage: /rewind [<turn>|<point id>] [--into <session id>]'
+  + ' — with no argument, lists the points this session can return to.'
+
+/** One parsed `/rewind` invocation. */
+export type RewindCommand
+  /** No argument: show the list rather than act on it. */
+  = | { readonly kind: 'list' }
+    /** Rewind, forking the conversation here or filing into a caller's fork. */
+    | { readonly kind: 'rewind'; readonly selector: string; readonly into?: string }
+    /** The words do not form a `/rewind`. */
+    | { readonly kind: 'usage' }
+
+/**
+ * Parse only the grammar `/rewind` owns.
+ *
+ * `--into` exists for a caller that has already forked the conversation
+ * through the deployment's own fork — the web client's, which also attaches
+ * the child to its workspace. Without it, that caller's only route would be to
+ * have this plugin build a second fork beside the correct one.
+ *
+ * @param rawInput - everything after the command name.
+ * @returns what the user asked for.
+ */
+export function parseRewind(rawInput: string): RewindCommand {
+  const words = rawInput.trim().split(/\s+/u).filter(word => word !== '')
+  if (words.length === 0) return { kind: 'list' }
+  const [selector, ...rest] = words
+  /* v8 ignore next -- a non-empty word list has a first word */
+  if (selector === undefined) return { kind: 'usage' }
+  if (selector.startsWith('--')) return { kind: 'usage' }
+  if (rest.length === 0) return { kind: 'rewind', selector }
+  if (rest.length !== 2 || rest[0] !== '--into') return { kind: 'usage' }
+  const into = rest[1]
+  if (into === undefined || into === '') return { kind: 'usage' }
+  return { kind: 'rewind', selector, into }
+}
 
 /**
  * Render a refusal as one direct sentence.
@@ -146,13 +183,16 @@ function redoResult(outcome: RedoOutcome): CommandResult {
  * @returns the command result a UI shows.
  */
 async function runRewind(ctx: Context, invocation: CommandInvocation): Promise<CommandResult> {
-  const input = invocation.rawInput.trim()
-  if (input === '') {
+  const command = parseRewind(invocation.rawInput)
+  if (command.kind === 'usage') return { kind: 'error', text: REWIND_USAGE }
+  if (command.kind === 'list') {
     const points = await ctx.filesnap.points(invocation.agent, invocation.signal)
     return points.ok ? listResult(points.value) : refusalResult(points.refusal)
   }
-  if (input.includes(' ')) return { kind: 'error', text: REWIND_USAGE }
-  const outcome = await ctx.filesnap.rewind(invocation.agent, input, { kind: 'fork' }, invocation.signal)
+  const destination: RewindDestination = command.into === undefined
+    ? { kind: 'fork' }
+    : { kind: 'into', session: SessionId(command.into) }
+  const outcome = await ctx.filesnap.rewind(invocation.agent, command.selector, destination, invocation.signal)
   return outcome.ok ? rewindResult(outcome.value) : refusalResult(outcome.refusal)
 }
 
@@ -180,7 +220,7 @@ export function registerCommands(ctx: Context): void {
   ctx.commands.register({
     name: 'rewind',
     description: 'put the workspace and the conversation back to the start of an earlier turn',
-    input: { hint: '[<turn>|<point id>]' },
+    input: { hint: '[<turn>|<point id>] [--into <session id>]' },
     handler: invocation => runRewind(ctx, invocation),
   })
   ctx.commands.register({

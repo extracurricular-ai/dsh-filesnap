@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
-import { foldPoints, reconcile, selectPoint } from '../src/points.ts'
+import { capturedPoints, foldPoints, initialPoints, reconcile, reducePoints, selectPoint } from '../src/points.ts'
 
 /** Build a contiguous log the way the store does: `seq` is the position. */
 function log(...entries: readonly { type: string; data: unknown; time?: number }[]): SessionEvent[] {
@@ -172,5 +172,58 @@ describe('selectPoint', () => {
       { type: 'turn/end', data: { turn: 2, reason: 'natural' } },
     ))
     expect(selectPoint(odd, '2')?.turn).toBe(1)
+  })
+})
+
+describe('reducePoints', () => {
+  it('returns the same reference for an event it does not read', () => {
+    // The projection seam treats an unchanged reference as zero downstream
+    // work, and most events in a session are not this reader's.
+    const state = initialPoints()
+    const [chunk] = log({ type: 'assistant/chunk', data: { turn: 1, step: 1, chunk: {} } })
+    expect(reducePoints(state, chunk!)).toBe(state)
+  })
+
+  it('returns the same reference for a message that labels nothing', () => {
+    const state = initialPoints()
+    const [injected] = log({
+      type: 'user/message',
+      data: { role: 'user', content: [{ type: 'text', text: 'x' }], source: { kind: 'plugin', plugin: 'p' } },
+    })
+    expect(reducePoints(state, injected!)).toBe(state)
+  })
+
+  it('holds plain JSON, so a persisted cache can seed it', () => {
+    const state = log(...turn(1, 'a')).reduce(reducePoints, initialPoints())
+    expect(JSON.parse(JSON.stringify(state))).toEqual(state)
+    expect(state.openTurn).toBeNull()
+  })
+
+  it('records where the last rewind out of this session went', () => {
+    const state = log(
+      ...turn(1, 'a'),
+      {
+        type: 'filesnap/rewound',
+        data: { point: 's.t1', turn: 1, child: 'session-b', boundary: -1, written: 2, deleted: 0, failed: 0, safety: 'ab' },
+      },
+    ).reduce(reducePoints, initialPoints())
+    expect(state.lastRewind).toMatchObject({ point: 's.t1', turn: 1, child: 'session-b' })
+  })
+
+  it('is the same answer folded one event at a time as in one pass', () => {
+    const events = log(...turn(1, 'a'), ...turn(2, 'b'))
+    let state = initialPoints()
+    for (const event of events) state = reducePoints(state, event)
+    expect(capturedPoints(state)).toEqual(foldPoints(events))
+  })
+
+  it('does not offer a turn that was labelled but never captured', () => {
+    const state = log(
+      { type: 'turn/start', data: { turn: 1 } },
+      { type: 'user/message', data: { role: 'user', content: [{ type: 'text', text: 'never captured' }], source: { kind: 'user' } } },
+      { type: 'turn/end', data: { turn: 1, reason: { kind: 'completed' } } },
+    ).reduce(reducePoints, initialPoints())
+    expect(state.points).toHaveLength(1)
+    expect(capturedPoints(state)).toEqual([])
   })
 })

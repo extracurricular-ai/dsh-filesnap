@@ -15,6 +15,11 @@
  * session that has not run a turn yet. `filesnap log` remains the authority on
  * what the store still holds, which is why {@link reconcile} exists.
  *
+ * The fold is written as a **reducer over one event at a time**, because the
+ * projection seam drives exactly that shape and a second whole-log
+ * implementation beside it would be one more thing to keep in step.
+ * {@link foldPoints} is the batch form of the same transition.
+ *
  * @module
  */
 
@@ -23,6 +28,45 @@ import type { RewindPoint } from './types.ts'
 
 /** How much of a user's opening message labels a point in a list. */
 const LABEL_MAX_CHARS = 72
+
+/**
+ * Accumulated reader state.
+ *
+ * Plain JSON, and deliberately so: the projection cache persists it between
+ * processes, which rules out `undefined` and any exotic object. `openTurn` is
+ * `null` rather than absent for the same reason.
+ */
+export interface PointsState {
+  /** The points found so far, in conversation order. */
+  readonly points: readonly RewindPoint[]
+  /** The turn currently open, so a `user/message` knows which point it labels. */
+  readonly openTurn: number | null
+  /** Seq the open turn started at, for the boundary one before it. */
+  readonly openTurnStart: number
+  /**
+   * Where the last rewind out of this session went, when there was one.
+   * `| undefined` for the same JSON round-trip reason as {@link RewindPoint.label}.
+   */
+  readonly lastRewind?: {
+    /** The point the workspace was returned to. */
+    readonly point: string
+    /** The turn that point precedes. */
+    readonly turn: number
+    /** The session the conversation continues in. */
+    readonly child: string
+    /** Epoch ms the rewind was recorded. */
+    readonly at: number
+  } | undefined
+}
+
+/**
+ * The reader state for an empty log.
+ *
+ * @returns a fresh initial state.
+ */
+export function initialPoints(): PointsState {
+  return { points: [], openTurn: null, openTurnStart: 0 }
+}
 
 /**
  * First line of a message's visible text, trimmed to a list-sized label.
@@ -46,11 +90,91 @@ function label(content: readonly { type: string; text?: string }[]): string | un
 }
 
 /**
- * Fold a session's events into the points it can be rewound to.
+ * Fold one committed event into the reader state.
  *
- * One point per captured turn, in the order the session ran. A turn appears
- * only if its capture succeeded and recorded a `filesnap/point`; a turn whose
- * capture failed is deliberately absent rather than listed and refused on use.
+ * **Returns the same reference when the event is not this reader's.** The
+ * projection seam treats an unchanged reference as zero downstream work, and
+ * most events in a session — every chunk, every tool result — are not this
+ * reader's.
+ *
+ * @param state - the state covering every prior event.
+ * @param event - the next committed event.
+ * @returns the next state, or `state` itself when nothing changed.
+ */
+export function reducePoints(state: PointsState, event: SessionEvent): PointsState {
+  switch (event.type) {
+    case 'turn/start':
+      return { ...state, openTurn: event.data.turn, openTurnStart: event.seq }
+    case 'turn/end':
+      return state.openTurn === null ? state : { ...state, openTurn: null }
+    case 'filesnap/point': {
+      // The capture is placed by the turn it names rather than by whichever
+      // turn happens to be open: a fork can seed a child with a point whose
+      // turn boundaries are already in the seed, and the seq arithmetic has to
+      // follow the recorded turn, not the reader's cursor.
+      const boundary = event.data.turn === state.openTurn ? state.openTurnStart - 1 : event.seq - 1
+      const known = state.points.find(point => point.turn === event.data.turn)
+      const fresh: RewindPoint = {
+        point: event.data.point,
+        turn: event.data.turn,
+        boundary,
+        at: event.time,
+        ...known?.label === undefined ? {} : { label: known.label },
+      }
+      return {
+        ...state,
+        points: known === undefined
+          ? [...state.points, fresh]
+          : state.points.map(point => point.turn === event.data.turn ? fresh : point),
+      }
+    }
+    case 'filesnap/rewound':
+      return {
+        ...state,
+        lastRewind: {
+          point: event.data.point,
+          turn: event.data.turn,
+          child: event.data.child,
+          at: event.time,
+        },
+      }
+    case 'user/message': {
+      // Only a direct human prompt labels a point. Injected context — file
+      // notices, skill content, goal continuations — is a user-role message
+      // too, and labelling a rewind point with one would name something the
+      // user never wrote.
+      const turn = state.openTurn
+      if (turn === null || event.data.source.kind !== 'user') return state
+      const known = state.points.find(point => point.turn === turn)
+      if (known !== undefined && known.label !== undefined) return state
+      const text = label(event.data.content)
+      if (text === undefined) return state
+      // A message can arrive before its turn's capture. The label is held on
+      // the point when one exists and is re-read from the state when the
+      // capture lands, so neither has to come first.
+      const placeholder: RewindPoint = { point: '', turn, boundary: state.openTurnStart - 1, at: event.time, label: text }
+      return {
+        ...state,
+        points: known === undefined
+          ? [...state.points, placeholder]
+          : state.points.map(point => point.turn === turn ? { ...point, label: text } : point),
+      }
+    }
+    default:
+      // Every other event type is someone else's business. This is a
+      // merge-extensible map, so the default is a fall-through rather than an
+      // exhaustiveness check — and returning `state` unchanged is what makes
+      // the projection's change detection free.
+      return state
+  }
+}
+
+/**
+ * The points a log holds, oldest first.
+ *
+ * A turn appears only if its capture succeeded and recorded a
+ * `filesnap/point`; a turn whose capture failed is deliberately absent rather
+ * than listed and refused on use.
  *
  * The `boundary` each point carries is the seq of the event *before* its turn
  * opened, which is the last `turn/end` (or nothing, for the first turn). That
@@ -62,72 +186,21 @@ function label(content: readonly { type: string; text?: string }[]): string | un
  * @returns the points, oldest first.
  */
 export function foldPoints(events: readonly SessionEvent[]): RewindPoint[] {
-  /** Captured turns, keyed by harness turn number. */
-  const captured = new Map<number, { point: string; boundary: number; at: number }>()
-  /** Opening messages, kept apart from the captures so neither has to arrive first. */
-  const labels = new Map<number, string>()
-  /** Turn currently open, so a `user/message` knows which point it labels. */
-  let openTurn: number | undefined
-  /** Seq the open turn started at, for the boundary one before it. */
-  let openTurnStart = 0
-  /** Turn order of first capture, so the list runs in conversation order. */
-  const order: number[] = []
+  return capturedPoints(events.reduce(reducePoints, initialPoints()))
+}
 
-  for (const event of events) {
-    switch (event.type) {
-      case 'turn/start':
-        openTurn = event.data.turn
-        openTurnStart = event.seq
-        break
-      case 'turn/end':
-        openTurn = undefined
-        break
-      case 'filesnap/point': {
-        // The capture is attached to the turn it names rather than to whichever
-        // turn happens to be open: a fork can seed a child with a point whose
-        // turn boundaries are already in the seed, and the seq arithmetic has
-        // to follow the recorded turn, not the reader's cursor.
-        const boundary = event.data.turn === openTurn ? openTurnStart - 1 : event.seq - 1
-        if (!captured.has(event.data.turn)) order.push(event.data.turn)
-        captured.set(event.data.turn, { point: event.data.point, boundary, at: event.time })
-        break
-      }
-      case 'user/message': {
-        // Only a direct human prompt labels a point. Injected context — file
-        // notices, skill content, goal continuations — is a user-role message
-        // too, and labelling a rewind point with one would name something the
-        // user never wrote.
-        if (openTurn === undefined || event.data.source.kind !== 'user') break
-        if (labels.has(openTurn)) break
-        const text = label(event.data.content)
-        if (text !== undefined) labels.set(openTurn, text)
-        break
-      }
-      default:
-        // Every other event type is someone else's business. This is a
-        // merge-extensible map, so the default is a fall-through rather than
-        // an exhaustiveness check.
-        break
-    }
-  }
-
-  // Joined at the end rather than as the events arrive, so the capture and the
-  // message that labels it may appear in either order. They do have one fixed
-  // order today — the capture runs in pre-step, ahead of the entered
-  // messages — but that is the loop's business, not this reader's.
-  return order.flatMap((turn) => {
-    const point = captured.get(turn)
-    /* v8 ignore next -- `order` only gains a turn as `captured` gains it */
-    if (point === undefined) return []
-    const text = labels.get(turn)
-    return [{
-      point: point.point,
-      turn,
-      boundary: point.boundary,
-      at: point.at,
-      ...text === undefined ? {} : { label: text },
-    }]
-  })
+/**
+ * The captured points in a reader state.
+ *
+ * A turn that was labelled but never captured holds a placeholder with no
+ * point id, which is not a rewind target: dropping it here keeps the list to
+ * things `restore` will accept.
+ *
+ * @param state - a folded reader state.
+ * @returns the points that name a snapshot.
+ */
+export function capturedPoints(state: PointsState): RewindPoint[] {
+  return state.points.filter(point => point.point !== '')
 }
 
 /**
