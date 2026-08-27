@@ -23,11 +23,16 @@
 /** What a deployment may set. */
 export interface FilesnapConfig {
   /**
-   * The `filesnap` command. A bare name is resolved through the subprocess
-   * provider's own PATH, so it follows the execution world the filesystem
-   * provider is mounted in rather than this process's environment.
+   * Where the `filesnap` command is, when the deployment wants to say.
+   *
+   * **Normally absent.** `filesnap` is a dependency of this package, so the
+   * prebuilt binary for this platform is installed beside it and is found
+   * without configuration. Set this to point at a different build, or to a bare
+   * name for a subprocess provider whose execution world is not this machine —
+   * a bare name resolves through that provider's own PATH rather than this
+   * process's environment.
    */
-  readonly command: string
+  readonly command?: string
   /**
    * Where the store lives. Omitted lets the engine use the platform data
    * directory — `$XDG_DATA_HOME` or `~/.local/share` on Unix, `%LOCALAPPDATA%`
@@ -58,17 +63,23 @@ export interface FilesnapConfig {
   readonly declareEdits: boolean
 }
 
+/**
+ * The name to fall back to when nothing is installed beside this package and
+ * the deployment named no command — a subprocess provider pointed at a remote
+ * execution world, where a local `node_modules` path means nothing.
+ */
+export const FALLBACK_COMMAND = 'filesnap'
+
 /** The configuration of a deployment that sets nothing. */
 export const DEFAULTS = {
-  command: 'filesnap',
   timeoutMs: 120_000,
   graceMs: 2_000,
   maxOutputBytes: 1 << 20,
   declareEdits: true,
-} as const satisfies Omit<FilesnapConfig, 'dataDir'>
+} as const satisfies Omit<FilesnapConfig, 'dataDir' | 'command'>
 
 /** Fields a deployment may name; anything else is a typo worth failing on. */
-const KNOWN = new Set<string>([...Object.keys(DEFAULTS), 'dataDir'])
+const KNOWN = new Set<string>([...Object.keys(DEFAULTS), 'dataDir', 'command'])
 
 /**
  * Read one optional positive-integer field.
@@ -129,8 +140,9 @@ export function resolveConfig(config: unknown = {}): FilesnapConfig {
     throw new TypeError(`filesnap: \`declareEdits\` must be a boolean, got ${JSON.stringify(declareEdits)}`)
   }
   const dataDir = nonEmptyString(raw, 'dataDir')
+  const command = nonEmptyString(raw, 'command')
   return {
-    command: nonEmptyString(raw, 'command') ?? DEFAULTS.command,
+    ...command === undefined ? {} : { command },
     ...dataDir === undefined ? {} : { dataDir },
     timeoutMs: positiveInteger(raw, 'timeoutMs', DEFAULTS.timeoutMs),
     graceMs: positiveInteger(raw, 'graceMs', DEFAULTS.graceMs),

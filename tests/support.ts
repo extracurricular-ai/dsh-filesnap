@@ -13,15 +13,24 @@ import { existsSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import type { SubprocessHandle, SubprocessSpawnSpec } from '@deepseek-ai/dsh-subprocess'
+import { bundledBinary } from '../src/binary.ts'
 
-/** Candidate locations for a built `filesnap`, nearest first. */
+/**
+ * The binary these tests drive.
+ *
+ * The installed one first — `filesnap` is this package's own dependency, so an
+ * ordinary `npm install` is all a contributor needs. `FILESNAP_BIN` overrides
+ * it for a locally built engine, and a sibling `filesnap` checkout's cargo
+ * output is the last resort.
+ */
 const CANDIDATES = [
   process.env['FILESNAP_BIN'],
+  bundledBinary(import.meta.url),
   resolve(import.meta.dirname, '../../filesnap/target/release/filesnap'),
   resolve(import.meta.dirname, '../../filesnap/target/debug/filesnap'),
 ].filter((path): path is string => path !== undefined)
 
-/** The binary these tests drive, or undefined when none was built. */
+/** The binary these tests drive, or undefined when none is installed or built. */
 export const BINARY = CANDIDATES.find(path => existsSync(path))
 
 /** A `ctx.subprocess`-shaped object backed by `node:child_process`. */

@@ -24,11 +24,13 @@ import type { Session, SessionEvent, SessionId } from '@deepseek-ai/dsh-session'
 import { SessionId as brandSessionId } from '@deepseek-ai/dsh-session'
 import { registerCommands } from './commands.ts'
 import type { FilesnapCli, FilesnapRun } from './cli.ts'
+import { bundledBinary } from './binary.ts'
 import { createFilesnapCli, eventsOfType, lastEvent, numberField, stringField } from './cli.ts'
 import { explain, pointId, sessionId as admitSessionId } from './ids.ts'
 import { mark, unmark } from './mark.ts'
 import { foldPoints, reconcile, selectPoint } from './points.ts'
 import type { FilesnapStatus, RedoOutcome, RewindOutcome, RewindPoint, RewindRefusal, RewindResult } from './types.ts'
+import { FALLBACK_COMMAND } from './config.ts'
 import type { FilesnapConfig } from './config.ts'
 
 /** Per-session bookkeeping, all of it recoverable from the log or the store. */
@@ -273,8 +275,7 @@ export class FilesnapRewind extends Service {
    * @returns the invoker, or why the command could not be reached.
    */
   private start(): Promise<FilesnapCli | { readonly unavailable: string }> {
-    return this.ctx.subprocess
-      .resolveExecutable(this.config.command)
+    return this.locate()
       .then((executable): FilesnapCli | { unavailable: string } => createFilesnapCli(this.ctx, {
         executable,
         dataDir: this.config.dataDir,
@@ -283,10 +284,43 @@ export class FilesnapRewind extends Service {
         maxOutputBytes: this.config.maxOutputBytes,
       }))
       .catch((error: unknown) => ({
-        unavailable: `\`${this.config.command}\` could not be found (${String(error)}); `
-          + 'install it with `cargo install filesnap-cli` or `npm i -g filesnap`, '
-          + 'or set this plugin\'s `command` to its path',
+        unavailable: `the \`filesnap\` command could not be found (${String(error)}). `
+          + 'It installs with this package, so this usually means the install is '
+          + 'incomplete — reinstall the plugin, or set its `command` config to a path.',
       }))
+  }
+
+  /**
+   * Resolve the command to run, nearest first.
+   *
+   * 1. What the deployment named, when it named one.
+   * 2. The prebuilt binary installed beside this package — the ordinary case,
+   *    and the reason nobody has to install anything by hand.
+   * 3. A bare `filesnap` on the provider's own PATH. This is the branch that
+   *    matters for a subprocess provider whose execution world is not this
+   *    machine, where a local `node_modules` path resolves to nothing.
+   *
+   * Every candidate goes through `resolveExecutable`, which verifies an
+   * absolute path in the provider's world rather than this process's — so a
+   * bundled path that exists here but not there is rejected and falls through
+   * rather than being spawned into a sandbox that cannot see it.
+   *
+   * @returns the canonical executable path.
+   * @throws when no candidate resolves.
+   */
+  private async locate(): Promise<string> {
+    const named = this.config.command
+    if (named !== undefined) return await this.ctx.subprocess.resolveExecutable(named)
+    const bundled = bundledBinary()
+    if (bundled !== undefined) {
+      try {
+        return await this.ctx.subprocess.resolveExecutable(bundled)
+      } catch {
+        // Installed here, unreachable there. Fall through to the PATH lookup,
+        // which is what a remote execution world can actually answer.
+      }
+    }
+    return await this.ctx.subprocess.resolveExecutable(FALLBACK_COMMAND)
   }
 
   /**

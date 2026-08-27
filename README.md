@@ -32,6 +32,15 @@ earlier moment. This package is the harness half: it decides *when* to
 snapshot, what a rewind point means in a conversation, and how the two halves
 of a rewind are sequenced.
 
+> **Before you install:** the plugin records its rewind points as session
+> events, and the harness has no supported way for an out-of-repo plugin to
+> declare an event type — so it declares them by mutating a harness constant at
+> load. That works, and it has one user-visible consequence worth knowing up
+> front: **uninstalling the plugin leaves the conversations it captured in
+> unopenable**, because the reader refuses a log holding a type it does not
+> know. The data is untouched on disk; reinstalling restores access. See
+> [Known limitations](#known-limitations).
+
 ## What it does
 
 **Captures once per turn.** On `agent/pre-step`, before the model request and
@@ -138,18 +147,23 @@ conversation, so it does not go through the thing being rewound.
 
 ## Install
 
-The plugin spawns the `filesnap` binary, so install that first:
-
-```console
-$ cargo install filesnap-cli    # or: npm i -g filesnap
-$ filesnap --version
-```
-
-Then add the plugin to a profile — `dsh plugin` forwards its arguments to pnpm
-inside the profile directory:
+Nothing to install by hand. `filesnap` is a dependency of this package, so
+installing the plugin brings the prebuilt binary for your platform with it:
 
 ```console
 $ dsh plugin --profile web add dsh-filesnap
+```
+
+The binary is found by resolution, not by `PATH` — the launcher's `bin` entry
+lands in the profile's `node_modules/.bin`, which the subprocess provider's
+scrubbed environment has no reason to include. Set the `command` config only to
+point at a different build, or to a bare name for a subprocess provider whose
+execution world is not this machine.
+
+`dsh plugin` forwards its arguments to pnpm inside the profile directory, and
+warns:
+
+```
 dsh: warning: dsh-filesnap declares no dsh.bundle — installed as a plain
 dependency, not a profile layer
 ```
@@ -216,7 +230,7 @@ deployments set none of them.
 
 | field | default | |
 |---|---|---|
-| `command` | `filesnap` | the binary. A bare name resolves through the subprocess provider's own `PATH`, so it follows the execution world the filesystem provider is mounted in. |
+| `command` | *(resolved)* | normally unset — the binary installed with this package is found automatically. Set it to use a different build, or to a bare name that the subprocess provider resolves through its own `PATH` when its execution world is not this machine. |
 | `dataDir` | platform data directory | where the store lives — `$XDG_DATA_HOME` or `~/.local/share` on Unix, `%LOCALAPPDATA%` on Windows. Never inside your project. |
 | `timeoutMs` | `120000` | wall-clock bound for one invocation. The expensive one is the per-turn scan. |
 | `graceMs` | `2000` | SIGTERM-to-SIGKILL grace when a deadline or a cancelled turn ends a run. |
@@ -336,8 +350,9 @@ plugin.
 
 The suite has four tiers. `npm run test:standalone` needs neither the harness
 nor the binary. The engine, service and wiring suites drive the real `filesnap`
-command and self-skip when none is built — set `FILESNAP_BIN`, or leave a
-`../filesnap` checkout with `cargo build --release -p filesnap-cli` run in it.
+command, which `npm install` already brought in — so they just run.
+`FILESNAP_BIN` points them at a different build, and a sibling `filesnap`
+checkout's cargo output is the last resort.
 
 Two build faces:
 

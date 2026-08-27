@@ -24,6 +24,7 @@
   ],
   "license": "Apache-2.0",
   "keywords": [
+    "dsh",
     "deepseek-harness",
     "dsh-plugin",
     "cordis",
@@ -84,6 +85,7 @@
     "url": "https://github.com/extracurricular-ai/dsh-filesnap/issues"
   },
   "dependencies": {
+    "filesnap": "^0.3.0",
     "zod": "^4.4.3"
   },
   "dsh": {
