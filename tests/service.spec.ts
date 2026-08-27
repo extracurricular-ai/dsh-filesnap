@@ -17,10 +17,23 @@ import { resolveConfig } from '../src/config.ts'
 import { FilesnapRewind } from '../src/service.ts'
 import { BINARY, nodeSubprocess, scratch } from './support.ts'
 
-/** One detached session bound to a working directory. */
-function sessionAt(id: string, cwd: string): Session {
-  const header: SessionHeader = { version: 0, id: SessionId(id), createdAt: 1_700_000_000_000, cwd }
+/** One detached session bound to a working directory. The header is frozen at construction, so lineage is passed in. */
+function sessionAt(id: string, cwd: string, parent?: string): Session {
+  const header: SessionHeader = {
+    version: 0,
+    id: SessionId(id),
+    createdAt: 1_700_000_000_000,
+    cwd,
+    ...parent === undefined ? {} : { parentSession: SessionId(parent) },
+  }
   return Session.create(SessionId(id), undefined, header)
+}
+
+/** Build a session and register it as live, so `retitle` accepts it. */
+function liveSessionAt(live: Map<string, Session>, id: string, cwd: string, parent?: string): Session {
+  const session = sessionAt(id, cwd, parent)
+  live.set(id, session)
+  return session
 }
 
 /** The slice of `Agent` this service reads. */
@@ -52,14 +65,18 @@ describe.skipIf(BINARY === undefined)('FilesnapRewind', () => {
   let service: FilesnapRewind
   let fiber: Awaited<ReturnType<Context['plugin']>>
   let forked: { id: SessionId; seed: readonly SessionEvent[]; parent?: SessionId }[]
+  /** Sessions the store considers live, by id. */
+  let live: Map<string, Session>
 
   beforeEach(async () => {
     workspace = scratch('filesnap-svc-ws')
     store = scratch('filesnap-svc-store')
     forked = []
+    live = new Map()
     ctx = new Context()
     ctx.provide('subprocess', nodeSubprocess())
-    ctx.provide('sessions', {})
+    // The slice `retitle` uses: liveness, checked by identity.
+    ctx.provide('sessions', { get: (id: string) => live.get(id) })
     ctx.provide('agents', {
       create(options: { sessionId: SessionId; seed?: readonly SessionEvent[]; meta?: { parentSession?: SessionId } }) {
         forked.push({
@@ -288,6 +305,47 @@ describe.skipIf(BINARY === undefined)('FilesnapRewind', () => {
     const child = sessionAt('session-b', workspace.path)
     expect((await service.redo(agentOn(child))).ok).toBe(true)
     expect(readFileSync(file, 'utf8')).toBe('changed\n')
+  })
+
+  it('marks the conversation a rewind leaves, and unmarks it on the way back', async () => {
+    // Not an archive: `ctx.workspaceRegistry` ships `archiveSession` and no
+    // unarchive, so hiding the source would leave `/redo` with both
+    // conversations hidden. A title mark is reversible, which is the property
+    // the pair needs.
+    const titles = new Map<string, string>([['session-a', 'add a rate limiter']])
+    ctx.provide('sessionTitle', {
+      get: (session: { id: string }) => {
+        const title = titles.get(session.id)
+        return title === undefined ? undefined : { title }
+      },
+      rename: (session: { id: string }, title: string) => {
+        titles.set(session.id, title)
+        return { title }
+      },
+    })
+
+    const file = join(workspace.path, 'a.txt')
+    writeFileSync(file, 'original\n')
+    const session = liveSessionAt(live, 'session-a', workspace.path)
+    const agent = agentOn(session)
+    session.append('turn/start', { turn: 1 })
+    await service.capture(agent, 1)
+    session.append('turn/end', { turn: 1, reason: { kind: 'completed' } })
+    writeFileSync(file, 'changed\n')
+
+    const rewound = await service.rewind(agent, '1', { kind: 'into', session: SessionId('session-b') })
+    expect(rewound.ok).toBe(true)
+    expect(rewound.ok && rewound.value.markedTitle).toBe('↩ add a rate limiter')
+    expect(titles.get('session-a')).toBe('↩ add a rate limiter')
+
+    // The redo runs in the fork, and hands back to the session it forked from.
+    const child = liveSessionAt(live, 'session-b', workspace.path, 'session-a')
+    titles.set('session-b', 'add a rate limiter (2)')
+    const redone = await service.redo(agentOn(child))
+    expect(redone.ok).toBe(true)
+    expect(redone.ok && redone.value.returnedTo).toBe('session-a')
+    expect(titles.get('session-a')).toBe('add a rate limiter')
+    expect(titles.get('session-b')).toBe('↩ add a rate limiter (2)')
   })
 
   it('refuses a point nobody offered', async () => {

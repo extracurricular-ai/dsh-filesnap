@@ -119,6 +119,12 @@ export interface RewindOutcome {
    * command and the domain record of what happened stay joined.
    */
   readonly eventSeq: number
+  /**
+   * The marked title the conversation being left now carries. Absent when it
+   * could not be retitled — it is not live, or the deployment composes no
+   * title service.
+   */
+  readonly markedTitle?: string
 }
 
 /**
@@ -161,6 +167,14 @@ export interface RedoOutcome {
   readonly conflicts: readonly string[]
   /** Seq of the `filesnap/redone` event in this session's log. */
   readonly eventSeq: number
+  /** The conversation this redo hands back to, when this session was forked from one. */
+  readonly returnedTo?: SessionId
+  /**
+   * That conversation's title with the rewound mark removed. Absent when it
+   * could not be retitled — most often because it is not open, so its mark
+   * stays until it is.
+   */
+  readonly restoredTitle?: string
 }
 
 /**

@@ -26,6 +26,7 @@ import { registerCommands } from './commands.ts'
 import type { FilesnapCli, FilesnapRun } from './cli.ts'
 import { createFilesnapCli, eventsOfType, lastEvent, numberField, stringField } from './cli.ts'
 import { explain, pointId, sessionId as admitSessionId } from './ids.ts'
+import { mark, unmark } from './mark.ts'
 import { foldPoints, reconcile, selectPoint } from './points.ts'
 import type { FilesnapStatus, RedoOutcome, RewindOutcome, RewindPoint, RewindRefusal, RewindResult } from './types.ts'
 import type { FilesnapConfig } from './config.ts'
@@ -167,6 +168,45 @@ export class FilesnapRewind extends Service {
     // no registry at all. The service stays reachable either way.
     const commands = ctx.get('commands')
     if (commands !== undefined) registerCommands(commands, this)
+  }
+
+  /**
+   * Add or remove the rewound mark on one session's title.
+   *
+   * **Only a live session can be retitled.** `sessionTitle.rename` takes the
+   * exact live `Session` and refuses anything else, so a conversation the user
+   * has closed cannot be marked or unmarked from here. That is reported rather
+   * than swallowed: on the redo side it means the conversation being returned
+   * to keeps a mark that no longer applies, and the user should be told which
+   * one.
+   *
+   * Renaming pins the title — automatic generation stops for that session.
+   * Accepted: the alternative is a mark an automatic regeneration silently
+   * erases, which is a mark that cannot be relied on.
+   *
+   * @param session - the session to retitle, live or not.
+   * @param apply - how the current title becomes the new one.
+   * @returns the new title, or why it could not be set.
+   */
+  private retitle(session: Session | undefined, apply: (title: string) => string): string | undefined {
+    if (session === undefined) return undefined
+    const titles = this.ctx.get('sessionTitle')
+    if (titles === undefined) return undefined
+    // `ctx.get`, not `ctx.sessions`: `sessions` is not in this plugin's
+    // `inject`, and a property read for an undeclared service throws — which
+    // leaves the constructor and takes the whole fiber down, silently.
+    const sessions = this.ctx.get('sessions')
+    if (sessions === undefined || sessions.get(session.id) !== session) return undefined
+    const current = titles.get(session)?.title
+    if (current === undefined) return undefined
+    const next = apply(current)
+    if (next === current) return current
+    try {
+      return titles.rename(session, next).title
+    } catch (error: unknown) {
+      this.warn(`filesnap: could not retitle session "${session.id}": ${String(error)}`)
+      return undefined
+    }
   }
 
   /**
@@ -551,6 +591,11 @@ export class FilesnapRewind extends Service {
       failed: failed.length,
       safety,
     })
+    // The conversation being left now shares its whole history with the fork,
+    // so mark it where the choice is made. Reversible on purpose — see mark.ts
+    // for why this is not an archive.
+    const marked = this.retitle(agent.session, mark)
+
     const outcome: RewindOutcome = {
       point,
       child: child.value,
@@ -559,6 +604,7 @@ export class FilesnapRewind extends Service {
       failures: failed,
       safety,
       eventSeq: record.seq,
+      ...marked === undefined ? {} : { markedTitle: marked },
     }
     return { ok: true, value: outcome }
   }
@@ -608,9 +654,28 @@ export class FilesnapRewind extends Service {
       safety,
       conflicts: [...conflicts],
     })
+    // Symmetric with the rewind: the conversation being returned to loses its
+    // mark, and the fork being left picks one up. The parent is the session the
+    // rewind forked out of — a redo only resolves at all when a rewind filed
+    // its undo record here, and that fork is what named this session.
+    const parentId = agent.session.header.parentSession
+    const restored = parentId === undefined
+      ? undefined
+      : this.retitle(this.ctx.get('sessions')?.get(parentId), unmark)
+    this.retitle(agent.session, mark)
+
     return {
       ok: true,
-      value: { written, deleted, failures: failed, safety, conflicts, eventSeq: record.seq },
+      value: {
+        written,
+        deleted,
+        failures: failed,
+        safety,
+        conflicts,
+        eventSeq: record.seq,
+        ...parentId === undefined ? {} : { returnedTo: parentId },
+        ...restored === undefined ? {} : { restoredTitle: restored },
+      },
     }
   }
 

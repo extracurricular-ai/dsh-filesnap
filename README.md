@@ -115,7 +115,7 @@ A deployment that wants only the commands builds the host half and never runs
 |---|---|
 | `/rewind` | list the points this session can return to |
 | `/rewind <turn>` | fork the conversation there and put the files back with it |
-| `/redo` | reverse the rewind that landed in this session |
+| `/redo` | reverse the rewind that landed in this session, and hand back to the conversation it forked from |
 | `/rewind status` | what the store holds here, and which files it does **not** protect |
 
 `/rewind status` re-scans the tree rather than reading something a capture
@@ -244,6 +244,12 @@ protected, and why.
   is named, the others still land, and the result says so.
 - **Rewind an agent that is mid-turn.** Stop it first. A rewind would otherwise
   write over files the turn's own tools are still using.
+- **Hide the conversation you rewound out of.** It is *marked*, not archived —
+  its title gains a `↩` prefix, which `/redo` removes again. `archiveSession`
+  exists on `ctx.workspaceRegistry`; unarchive does not, and the harness's own
+  comments call it deferred work. Archiving one half of a reversible pair would
+  leave `/redo` with both conversations hidden, which is worse than the
+  confusion it set out to fix.
 
 ## What it records
 

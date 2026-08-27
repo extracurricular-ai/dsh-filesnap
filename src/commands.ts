@@ -145,6 +145,9 @@ function rewindResult(outcome: RewindOutcome): CommandResult {
     `The conversation continues in ${outcome.child}.`,
     'Run /redo there to reverse this rewind.',
   )
+  if (outcome.markedTitle !== undefined) {
+    lines.push(`This one is now listed as "${outcome.markedTitle}", so the two are told apart.`)
+  }
   return { kind: 'success', text: lines.join('\n'), sourceEventSeq: outcome.eventSeq }
 }
 
@@ -174,6 +177,11 @@ function redoResult(outcome: RedoOutcome): CommandResult {
       `${String(outcome.failures.length)} file(s) could not be written:`,
       ...outcome.failures.map(failure => `  ${failure.path} — ${failure.error}`),
     )
+  }
+  if (outcome.returnedTo !== undefined) {
+    lines.push('', outcome.restoredTitle === undefined
+      ? `Continue in ${outcome.returnedTo} — it is not open here, so its "rewound" mark stays until it is.`
+      : `Continue in "${outcome.restoredTitle}" (${outcome.returnedTo}); this one is now marked instead.`)
   }
   return { kind: 'success', text: lines.join('\n'), sourceEventSeq: outcome.eventSeq }
 }
