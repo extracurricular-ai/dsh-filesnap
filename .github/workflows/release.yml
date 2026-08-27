@@ -1,0 +1,105 @@
+name: release
+
+# Tag-driven, so what gets published is a commit that exists and is named.
+# `workflow_dispatch` is the rehearsal: with `dry_run` left on it does
+# everything except the upload, which is the only safety net there is —
+# **a published version can never be replaced or reused**.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Rehearse without uploading"
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    # Must match the "Environment name" configured on npmjs.com for this
+    # package's trusted publisher. Its value here is that a protection rule on
+    # the environment — a required reviewer — stops a publish even if something
+    # unwanted has reached the tag.
+    environment: npm
+    permissions:
+      # **A job-level `permissions:` block replaces the workflow-level one
+      # rather than merging with it**, so `contents: read` has to be restated.
+      # Without it `actions/checkout` fails.
+      contents: read
+      # What the OIDC exchange needs. This is the whole reason there is no
+      # long-lived registry token in this repository.
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+
+      # The harness is a build input, not a dependency: `lib/client.js` is
+      # produced by its tsdown preset, which is a repository file rather than a
+      # published entrypoint. Checked out INSIDE the workspace — `actions/checkout`
+      # refuses a path outside it — and pointed at through DSH_HARNESS.
+      - uses: actions/checkout@v4
+        with:
+          repository: deepseek-ai/deepseek-harness
+          path: .harness
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          # Deliberately no `registry-url`. It writes `_authToken=${NODE_AUTH_TOKEN}`
+          # into .npmrc; with no token that is an empty credential which npm
+          # still sends, so the registry rejects it instead of npm falling back
+          # to the OIDC exchange.
+
+      # Node 22 ships npm 10.x, and trusted publishing needs 11.5.1 or later.
+      # Pinned to a major rather than `@latest`: a release should not be the
+      # thing that discovers what npm shipped this morning.
+      - run: npm install -g "npm@^11.5.1"
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      # `--ignore-scripts` because nothing here needs a native build, and the
+      # harness's postinstall work is irrelevant to producing one bundle.
+      - name: Build the harness
+        working-directory: .harness
+        run: pnpm install --ignore-scripts && pnpm run build
+
+      - run: npm ci
+
+      - name: Link the harness
+        run: npm run harness:link -- "$GITHUB_WORKSPACE/.harness"
+
+      # A tag that does not name the version in the manifest would publish
+      # something nobody asked for, and there is no taking it back. Checked
+      # before anything is uploaded rather than discovered afterwards.
+      - name: The tag and the manifest agree
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          set -euo pipefail
+          manifest=$(node -p "require('./package.json').version")
+          tag="${GITHUB_REF_NAME#v}"
+          echo "manifest=$manifest tag=$tag"
+          if [ "$manifest" != "$tag" ]; then
+            echo "::error::tag $GITHUB_REF_NAME does not name version $manifest"
+            exit 1
+          fi
+
+      # `prepublishOnly` runs the typecheck, the tests and both builds, so the
+      # publish below cannot ship a tree that was never built — `lib/` is
+      # gitignored and is the entire payload.
+      - name: Publish
+        env:
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          set -euo pipefail
+          npm --version
+          if [ "${DRY_RUN:-false}" = "true" ]; then
+            npm publish --dry-run
+          else
+            npm publish
+          fi

@@ -324,6 +324,22 @@ Every operation returns `{ ok: true, value }` or `{ ok: false, refusal }`
 rather than throwing. Every caller has to render the reason, and an exception
 would make each of them re-derive it from a message string.
 
+## Why every `@deepseek-ai` peer is optional
+
+They are declared so the requirement is visible, and marked optional so nothing
+tries to satisfy it. A dsh plugin must **not** carry its own copy of the harness
+packages: it runs inside a composed harness and uses the one already there. A
+second copy is not a duplicate dependency, it is a second Cordis — different
+`Service` classes, a different registry, and a plugin whose `inject` never
+resolves, silently.
+
+The profile install path already prevents this (`autoInstallPeers: false` in
+the profile's pnpm settings, plus the launcher's symlink fallback into the
+installation's own modules). Marking them optional is what makes a bare
+`npm install dsh-filesnap` behave the same way instead of trying to materialize
+a set that does not resolve — the harness's release trains are not in lockstep,
+so npm's peer auto-install lands on a genuine conflict.
+
 ## Development
 
 The harness packages are `peerDependencies` — a deployment already has them,

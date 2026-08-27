@@ -29,29 +29,25 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/checkout@v4
-        with:
-          repository: extracurricular-ai/filesnap
-          path: ../filesnap
+      # Inside the workspace: `actions/checkout` refuses a path outside it,
+      # which an earlier draft of this file did not respect. The engine is no
+      # longer checked out at all — `filesnap` is a dependency, so `npm ci`
+      # brings the prebuilt binary the suites drive.
       - uses: actions/checkout@v4
         with:
           repository: deepseek-ai/deepseek-harness
-          path: ../deepseek-harness
+          path: .harness
       - uses: actions/setup-node@v4
         with:
           node-version: 24
       - uses: pnpm/action-setup@v4
         with:
           version: 10
-      - uses: dtolnay/rust-toolchain@stable
-      - name: build the engine
-        working-directory: ../filesnap
-        run: cargo build --release -p filesnap-cli
       - name: build the harness
-        working-directory: ../deepseek-harness
+        working-directory: .harness
         run: pnpm install --ignore-scripts && pnpm run build
       - run: npm ci
-      - run: npm run harness:link
+      - run: npm run harness:link -- "$GITHUB_WORKSPACE/.harness"
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
