@@ -1,0 +1,14 @@
+{
+  "//": "Emit face. Same resolution as the checking face; only the emit settings differ, so what is published is what was checked.",
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "declaration": true,
+    "declarationMap": false,
+    "sourceMap": false,
+    "rootDir": "src",
+    "outDir": "lib",
+    "declarationDir": "lib/types"
+  },
+  "include": ["src/**/*.ts"]
+}

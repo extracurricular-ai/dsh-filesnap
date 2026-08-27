@@ -1,0 +1,57 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  standalone:
+    # The tier that needs neither a harness checkout nor a built engine: id
+    # admission, config validation, the JSON Lines reader, and the rewind-point
+    # projection. Every import it reaches into the harness is type-only.
+    name: standalone tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run test:standalone
+
+  full:
+    # The tiers that drive the real engine and the real harness. Both are built
+    # from source here, because this plugin's contract is with what those
+    # projects ship rather than with a fixture of them.
+    name: engine and service tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: extracurricular-ai/filesnap
+          path: ../filesnap
+      - uses: actions/checkout@v4
+        with:
+          repository: deepseek-ai/deepseek-harness
+          path: ../deepseek-harness
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: dtolnay/rust-toolchain@stable
+      - name: build the engine
+        working-directory: ../filesnap
+        run: cargo build --release -p filesnap-cli
+      - name: build the harness
+        working-directory: ../deepseek-harness
+        run: pnpm install --ignore-scripts && pnpm run build
+      - run: npm ci
+      - run: npm run harness:link
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
