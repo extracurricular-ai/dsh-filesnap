@@ -39,11 +39,18 @@ before any tool runs, the workspace is snapshotted and the point is recorded in
 the session log. The capture is awaited, so a snapshot is never half-taken when
 the first edit lands.
 
-**Records pre-images before edits.** `fs/write-intent` and `fs/edit-intent` are
-decision waterfalls that run immediately ahead of the provider's mutation —
-the last moment a file's previous contents still exist. The plugin names the
-path and filesnap reads it, so the stored pre-image rests on an observation
-rather than on a claim.
+**Records pre-images before edits.** `fs/write-intent` and `fs/edit-intent` run
+immediately ahead of the provider's mutation — the last moment a file's
+previous contents still exist. The plugin names the path and filesnap reads it,
+so the stored pre-image rests on an observation rather than on a claim.
+
+Both are **single-slot decision** waterfalls, and the deployment's own policy
+takes that slot without delegating. These listeners are therefore registered
+with `prepend`, which is safe precisely because they decide nothing: they
+record and hand the decision on unchanged, so the policy still owns the
+outcome. Appended instead, they never run at all — which is what happened
+before `tests/wiring.spec.ts` grew a case that mounts a non-delegating decider
+first, the order a profile patch layer actually produces.
 
 These attachments are tool-agnostic. Coverage follows `ctx.fs`, not a list of
 tool names, so a tool this plugin has never heard of is protected the moment it

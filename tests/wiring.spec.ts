@@ -45,19 +45,43 @@ describe.skipIf(BINARY === undefined)('the plugin as a deployment mounts it', ()
   let store: ReturnType<typeof scratch>
   let ctx: Context
   let fiber: Awaited<ReturnType<Context['plugin']>>
+  /** Targets the fs policy stand-in decided on, in order. */
+  let decided: string[]
 
   beforeEach(async () => {
     workspace = scratch('filesnap-wiring-ws')
     store = scratch('filesnap-wiring-store')
     ctx = new Context()
     ctx.provide('subprocess', nodeSubprocess())
+    // The narrow slice `declareTarget` uses: a resolved target back to the
+    // absolute path the engine can read.
+    ctx.provide('fs', { processPath: (target: { targetKey: string }) => target.targetKey })
+    // A real initiator scope: the filesystem waterfalls carry no agent, so the
+    // plugin reads the one the driver established, and a stub returning
+    // undefined would make the declare path untestable.
+    let initiator: Agent | undefined
     ctx.provide('agents', {
-      currentInitiator: () => undefined,
+      currentInitiator: () => initiator,
+      withInitiator: <T>(agent: Agent, operation: () => T): T => {
+        const previous = initiator
+        initiator = agent
+        try { return operation() } finally { initiator = previous }
+      },
       create: () => Promise.resolve({}),
     })
     // Present, and deliberately NOT in this plugin's `inject`: reading it as a
     // property is what cordis refuses, and what the plugin must therefore not do.
     await ctx.plugin(CommandRuntime)
+
+    // The deployment's filesystem policy, in the position a bundle layer puts
+    // it: BEFORE the plugin, which a profile patch layer mounts after. It takes
+    // the single decision slot and does not delegate, exactly as
+    // `dsh-fs-observation-policy` does.
+    decided = []
+    ctx.on('fs/edit-intent', (target) => {
+      decided.push(target.displayPath)
+      return Promise.resolve({ version: 'v1' as never })
+    })
     fiber = await ctx.plugin(
       { name: 'dsh-filesnap', apply },
       /* v8 ignore next -- the binary is required for this suite to run at all */
@@ -125,6 +149,50 @@ describe.skipIf(BINARY === undefined)('the plugin as a deployment mounts it', ()
     const outcome = await service!.rewind(agent, '1', { kind: 'into', session: SessionId('session-b') })
     expect(outcome.ok).toBe(true)
     expect(readFileSync(file, 'utf8')).toBe('original\n')
+  })
+
+  it('records a pre-edit image even though the fs policy owns the decision slot', async () => {
+    // `fs/write-intent` and `fs/edit-intent` are single-slot decision
+    // waterfalls, and the deployment's policy takes the slot without calling
+    // `next()`. Appended, this plugin's listener never ran and every pre-edit
+    // image was silently missed. The stand-in below is that policy's shape,
+    // registered first, which is the order a profile patch layer produces.
+    // OUTSIDE the workspace on purpose: the turn-start scan cannot see it, so
+    // restoring it later is possible only if the pre-edit declare ran. A file
+    // inside the workspace would be restored by the scan whether or not it did,
+    // and would prove nothing about this path.
+    const outside = scratch('filesnap-wiring-outside')
+    try {
+      const file = join(outside.path, 'config.toml')
+      writeFileSync(file, 'before the edit\n')
+
+      const agent = agentAt('session-a', workspace.path)
+      agent.session.append('turn/start', { turn: 1 })
+      await agentEvents(ctx, agent).waterfall(
+        'agent/pre-step',
+        { messages: [], turn: 1, step: 1, signal: new AbortController().signal },
+        (): Promise<PreStepDecision> => Promise.resolve({ kind: 'enter', messages: [] }),
+      )
+
+      const target = { targetKey: file as never, displayPath: file }
+      const intent = await ctx.agents.withInitiator(agent, () => ctx.waterfall(
+        'fs/edit-intent', target, undefined,
+        () => Promise.resolve(undefined),
+      ))
+
+      // The policy still decided; this plugin only observed on the way past.
+      expect(decided).toEqual([file])
+      expect(intent).toEqual({ version: 'v1' })
+
+      writeFileSync(file, 'after the edit\n')
+      agent.session.append('turn/end', { turn: 1, reason: { kind: 'completed' } })
+
+      const outcome = await ctx.get('filesnap')!.rewind(agent, '1', { kind: 'into', session: SessionId('session-b') })
+      expect(outcome.ok).toBe(true)
+      expect(readFileSync(file, 'utf8')).toBe('before the edit\n')
+    } finally {
+      outside.remove()
+    }
   })
 
   it('does not capture a step the deployment rejected', async () => {

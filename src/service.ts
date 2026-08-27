@@ -140,18 +140,27 @@ export class FilesnapRewind extends Service {
     })
 
     if (config.declareEdits) {
-      // Both are single-slot decision waterfalls: the first listener that
-      // returns an intent owns the decision. This one owns nothing — it records
-      // and then delegates, so whichever policy the deployment mounted still
-      // decides.
+      // **`prepend`, and the whole feature depends on it.** Both of these are
+      // single-slot decision waterfalls, and the deployment's own policy —
+      // `dsh-fs-observation-policy`, which every assembly that mounts the
+      // filesystem tool also mounts — takes the slot and deliberately does not
+      // call `next()`. A profile patch layer applies after the bundle layers,
+      // so this plugin's listener registers second and, appended, never ran at
+      // all: every pre-edit image was silently missed.
+      //
+      // Prepending is safe precisely because this listener decides nothing. It
+      // records and delegates, so the policy still returns the intent and still
+      // owns the outcome; only the observation happens first, which is the one
+      // ordering that matters — the pre-image has to be read before the write.
+      const observe = { prepend: true } as const
       ctx.on('fs/write-intent', async (target, _actor, next): Promise<FsWriteIntent | undefined> => {
         await this.declareTarget(target)
         return next()
-      })
+      }, observe)
       ctx.on('fs/edit-intent', async (target, _actor, next): Promise<{ version: FsVersion } | undefined> => {
         await this.declareTarget(target)
         return next()
-      })
+      }, observe)
     }
 
     // Command availability follows plugin composition, and a headless run has
