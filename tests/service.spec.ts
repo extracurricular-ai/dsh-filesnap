@@ -113,7 +113,7 @@ describe.skipIf(BINARY === undefined)('FilesnapRewind', () => {
     // second manifest under a turn id that already resolves to the first.
     const session = sessionAt('session-a', workspace.path)
     session.append('turn/start', { turn: 1 })
-    session.append('filesnap/point', { turn: 1, point: 'session-a.t1', manifest: 'seeded', dropped: 0 })
+    session.append('filesnap/point', { turn: 1, point: 'session-a.t1', manifest: 'seeded', reused: 0, hashed: 0, dropped: 0 })
     await service.capture(agentOn(session), 1)
     expect(session.events.filter(event => event.type === 'filesnap/point')).toHaveLength(1)
   })
@@ -136,7 +136,7 @@ describe.skipIf(BINARY === undefined)('FilesnapRewind', () => {
     writeFileSync(join(workspace.path, 'a.txt'), 'v1\n')
     runTurn(session, 1, 'first change', () => {})
     // Turn 1 was never captured, so the log has a turn the engine cannot resolve.
-    session.append('filesnap/point', { turn: 1, point: 'session-a.t1', manifest: 'gone', dropped: 0 })
+    session.append('filesnap/point', { turn: 1, point: 'session-a.t1', manifest: 'gone', reused: 0, hashed: 0, dropped: 0 })
     runTurn(session, 2, 'second change', () => {})
     await service.capture(agent, 2)
 

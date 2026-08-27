@@ -57,16 +57,26 @@ exists somewhere the user cannot reach.
 
 ## The browser half
 
-Optional, and a separate artifact. `lib/client.js` adds a **Rewind** entry to
-the session header: it lists the points from a host-computed projection, and
-picking one does the same three steps in the order the web needs them.
+Optional, and a separate artifact. `lib/client.js` adds two things, and the
+split is the design:
+
+- **A rewind control in each turn's own message row**, beside copy and branch.
+  The transcript already *is* the list of points — one per turn — so the
+  control is one icon under the assistant message that closed that turn, and
+  its tooltip says what the snapshot covered. There is no panel repeating the
+  list.
+- **Two session-level controls in the header**: undo the rewind that landed
+  here (rendered only when one did), and ask the engine what it holds. The
+  status answer lands in the transcript, where a long list belongs.
+
+Picking a turn runs the three steps in the order the web needs them:
 
 ```
-sessions.fork(atSeq)        the deployment's own fork — composes the child's
-                            preset and attaches it to the workspace
+sessions.fork(atSeq)             the deployment's own fork — composes the child's
+                                 preset and attaches it to the workspace
 /rewind <point> --into <child>   the host puts the files back and files the
-                            undo record in that fork
-sessions.open(child)        the user lands where the files landed
+                                 undo record in that fork
+sessions.open(child)             the user lands where the files landed
 ```
 
 The host plugin can fork by itself and does so for a headless run. In the web
@@ -99,6 +109,13 @@ A deployment that wants only the commands builds the host half and never runs
 | `/rewind` | list the points this session can return to |
 | `/rewind <turn>` | fork the conversation there and put the files back with it |
 | `/redo` | reverse the rewind that landed in this session |
+| `/rewind status` | what the store holds here, and which files it does **not** protect |
+
+`/rewind status` re-scans the tree rather than reading something a capture
+stored, because the question is about the project as it stands now. That is why
+nothing runs it per turn: it costs what a capture costs. The per-turn coverage
+counts are free by comparison — the capture already reports them, so they ride
+the log and show up in the rewind control's tooltip.
 
 `/rewind <turn> --into <session>` files the undo record in a fork the caller
 already made, which is what the browser half passes.

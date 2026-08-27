@@ -1,12 +1,23 @@
 /**
- * Rewind surface, browser half: an entry in the session header's action strip.
+ * Rewind surface, browser half.
  *
- * The point list is the host-computed `filesnap` projection, so this plugin
- * owns no store, no refresh chain, and no event listener. What it does own is
- * the **order of a rewind in the web**, which differs from the headless one on
- * purpose:
+ * Two registrations, and the split is the design:
  *
- *   1. `sessions.fork(...)` — the deployment's own fork, which composes the
+ * - **`conversation.chat.assistant-actions`** carries the rewind itself, one
+ *   icon in each turn's own message row, beside copy and branch. The
+ *   transcript already is the list of points — one per turn — so a panel that
+ *   repeated it added a second thing to read and nothing to do.
+ * - **`conversation.session.header.actions`** carries the two facts that are
+ *   about the session rather than a turn: undoing the rewind that landed here,
+ *   and asking the engine what it holds.
+ *
+ * The plugin owns no store, no refresh chain and no event listener: the point
+ * list is the host-computed `filesnap` projection.
+ *
+ * What it does own is the **order of a rewind in the web**, which differs from
+ * the headless one on purpose:
+ *
+ *   1. `sessions.fork(atSeq)` — the deployment's own fork, which composes the
  *      child's preset and attaches it to the workspace.
  *   2. `/rewind <point> --into <child>` — the host puts the files back and
  *      files the undo record in that fork.
@@ -20,7 +31,7 @@
  */
 
 import type { ClientContext, SessionId } from '@deepseek-ai/dsh-client-runtime/client'
-// Type-only: pulls the ui-conversation SlotMap merge (the header action strip).
+// Type-only: pulls the ui-conversation SlotMap merge (the two strips).
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 // Type-only: pulls the locale plugin's Context merge (ctx.locale).
 import type {} from '@deepseek-ai/dsh-client-locale/client'
@@ -28,17 +39,19 @@ import type {} from '@deepseek-ai/dsh-client-locale/client'
 // outlet — importing the host's projection module here would merge the host's
 // `ctx.sessions` onto the client runtime's key.
 import type { RewindPoint } from '../wire.ts'
-import type { RewindActionResult, RewindActions } from './actions.ts'
-import { RewindHeaderEntry } from './RewindMenu.tsx'
+import type { RewindActionResult, RewindActions, RewindHeaderActions } from './actions.ts'
+import { RewindAction } from './RewindAction.tsx'
+import { RewindHeader } from './RewindHeader.tsx'
 import { en, zh, type RewindKey } from './locales.ts'
 
-export { RewindMenu, RewindHeaderEntry } from './RewindMenu.tsx'
-export type { RewindActionResult, RewindActions } from './actions.ts'
+export { RewindAction } from './RewindAction.tsx'
+export { RewindHeader } from './RewindHeader.tsx'
+export type { RewindActionResult, RewindActions, RewindHeaderActions } from './actions.ts'
 export type { RewindKey } from './locales.ts'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface LocaleNamespaceMap {
-    /** The rewind menu's copy. */
+    /** The rewind controls' copy. */
     filesnap: RewindKey
   }
 }
@@ -50,7 +63,7 @@ const NS = 'filesnap'
 export const inject = ['slots', 'sessions', 'locale']
 
 /**
- * Client plugin body: the rewind entry in the session header action strip.
+ * Client plugin body: the per-turn rewind control and the session-level strip.
  *
  * @param ctx - client root context.
  */
@@ -63,12 +76,13 @@ export function apply(ctx: ClientContext): void {
    * Run one slash command against a session's agent and report the outcome.
    *
    * The command registry is the one host route a plugin outside the harness
-   * repository can reach without generating an RPC of its own, and the two
-   * verbs it needs are already there.
+   * repository can reach without generating an RPC of its own, and every verb
+   * it needs is already there. A command's own text renders in the transcript
+   * as a command row; only admission comes back here.
    *
    * @param sessionId - the session whose agent executes it.
    * @param line - the full command line, leading slash included.
-   * @returns whether the command completed.
+   * @returns whether the command was admitted.
    */
   const command = async (sessionId: SessionId, line: string): Promise<RewindActionResult> => {
     const session = sessions.binding(sessionId)?.session
@@ -79,10 +93,12 @@ export function apply(ctx: ClientContext): void {
     return { ok: true }
   }
 
-  ctx.slots.inject('conversation.session.header.actions', () => ctx.slots.register({
-    name: 'conversation.session.header.actions',
+  ctx.slots.inject('conversation.chat.assistant-actions', () => ctx.slots.register({
+    name: 'conversation.chat.assistant-actions',
     id: 'filesnap',
-    order: 20,
+    // After feedback (10), so the destructive control is not the one a stray
+    // click lands on.
+    order: 30,
     locale: NS,
     inject: (sessionId): RewindActions => ({
       onRewind: async (point: RewindPoint): Promise<RewindActionResult> => {
@@ -101,7 +117,17 @@ export function apply(ctx: ClientContext): void {
         sessions.open(child)
         return done
       },
-      onRedo: () => command(sessionId, '/redo'),
     }),
-  }, RewindHeaderEntry))
+  }, RewindAction))
+
+  ctx.slots.inject('conversation.session.header.actions', () => ctx.slots.register({
+    name: 'conversation.session.header.actions',
+    id: 'filesnap',
+    order: 20,
+    locale: NS,
+    inject: (sessionId): RewindHeaderActions => ({
+      onRedo: () => command(sessionId, '/redo'),
+      onStatus: () => command(sessionId, '/rewind status'),
+    }),
+  }, RewindHeader))
 }

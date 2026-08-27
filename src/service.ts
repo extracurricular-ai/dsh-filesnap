@@ -27,7 +27,7 @@ import type { FilesnapCli, FilesnapRun } from './cli.ts'
 import { createFilesnapCli, eventsOfType, lastEvent, numberField, stringField } from './cli.ts'
 import { explain, pointId, sessionId as admitSessionId } from './ids.ts'
 import { foldPoints, reconcile, selectPoint } from './points.ts'
-import type { RedoOutcome, RewindOutcome, RewindPoint, RewindRefusal, RewindResult } from './types.ts'
+import type { FilesnapStatus, RedoOutcome, RewindOutcome, RewindPoint, RewindRefusal, RewindResult } from './types.ts'
 import type { FilesnapConfig } from './config.ts'
 
 /** Per-session bookkeeping, all of it recoverable from the log or the store. */
@@ -332,6 +332,8 @@ export class FilesnapRewind extends Service {
       turn,
       point: point.id,
       manifest: stringField(done, 'manifest', ''),
+      reused: numberField(done, 'reused', 0),
+      hashed: numberField(done, 'hashed', 0),
       dropped: numberField(done, 'dropped', 0),
     })
   }
@@ -411,6 +413,48 @@ export class FilesnapRewind extends Service {
     if (run.exit !== 'ok') return engineRefusal(run, 'filesnap could not read the session log')
     const resolvable = new Set(eventsOfType(run, 'log.entry').map(event => stringField(event, 'turn', '')))
     return { ok: true, value: reconcile(logged, resolvable) }
+  }
+
+  /**
+   * What the store holds for this workspace, and what it does not protect.
+   *
+   * **Re-scans.** The engine answers this by walking the tree again rather
+   * than reading something a capture stored, because the question is about the
+   * project as it stands now, not as it stood at some past turn. That is why
+   * nothing calls this per turn: it costs what a capture costs.
+   *
+   * @param agent - the agent whose workspace is being asked about.
+   * @param signal - caller cancellation.
+   * @returns the workspace's protection and usage picture, or why it could not be read.
+   */
+  async status(agent: Agent, signal?: AbortSignal): Promise<RewindResult<FilesnapStatus>> {
+    const state = this.stateFor(agent.session)
+    if (!state.binding.ok) return refuse({ kind: 'untracked', why: state.binding.why })
+    const cli = await this.invoker()
+    if ('unavailable' in cli) return refuse({ kind: 'untracked', why: cli.unavailable })
+
+    const run = await cli.run(['status', '--cwd', state.binding.cwd], state.binding.cwd, signal)
+    if (run.exit !== 'ok') return engineRefusal(run, 'filesnap could not read this workspace')
+
+    const usage = lastEvent(run, 'status.usage')
+    return {
+      ok: true,
+      value: {
+        workspace: stringField(lastEvent(run, 'status.workspace'), 'workspace', state.binding.cwd),
+        sessions: eventsOfType(run, 'status.session').map(event => ({
+          session: stringField(event, 'session', ''),
+          turns: numberField(event, 'turns', 0),
+          earliest: stringField(event, 'earliest', ''),
+          latest: stringField(event, 'latest', ''),
+        })),
+        recordsBytes: numberField(usage, 'recordsBytes', 0),
+        sharedContentBytes: numberField(usage, 'sharedContentBytes', 0),
+        unprotected: eventsOfType(run, 'status.unprotected').map(event => ({
+          path: stringField(event, 'path', '<unnamed>'),
+          reason: stringField(event, 'reason', 'unreported'),
+        })),
+      },
+    }
   }
 
   /**

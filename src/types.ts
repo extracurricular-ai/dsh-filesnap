@@ -39,6 +39,10 @@ declare module '@deepseek-ai/dsh-session/types' {
       point: string
       /** Content-addressed id of the manifest the capture wrote. */
       manifest: string
+      /** Files already in the store, kept by reference rather than re-hashed. */
+      reused: number
+      /** Files read and hashed for this capture. */
+      hashed: number
       /** How many files the scan saw and did not store. */
       dropped: number
     }
@@ -114,6 +118,32 @@ export interface RewindOutcome {
    * command and the domain record of what happened stay joined.
    */
   readonly eventSeq: number
+}
+
+/**
+ * What the store holds for one workspace, and what it does not protect.
+ *
+ * The unprotected list is the answer to "which files in my project would a
+ * rewind not put back, and why" — the question a bound you cannot see always
+ * raises. It is complete rather than sampled, because it is asked deliberately
+ * rather than printed every turn.
+ */
+export interface FilesnapStatus {
+  /** The workspace the store partitions by. */
+  readonly workspace: string
+  /** Every session with records in this workspace. */
+  readonly sessions: readonly {
+    readonly session: string
+    readonly turns: number
+    readonly earliest: string
+    readonly latest: string
+  }[]
+  /** Bytes this workspace's own records occupy. */
+  readonly recordsBytes: number
+  /** Bytes in the content store, shared with every other workspace. */
+  readonly sharedContentBytes: number
+  /** Files the scan saw and did not store, with the engine's reason for each. */
+  readonly unprotected: readonly { readonly path: string; readonly reason: string }[]
 }
 
 /** What a completed redo did. */

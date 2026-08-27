@@ -37,6 +37,7 @@ export { capturedPoints, foldPoints, initialPoints, reconcile, reducePoints, sel
 export type { PointsState } from './points.ts'
 export type { FilesnapProjection, RewindRecord } from './wire.ts'
 export type {
+  FilesnapStatus,
   RedoOutcome,
   RewindOutcome,
   RewindPoint,

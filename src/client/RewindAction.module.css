@@ -1,0 +1,30 @@
+/* The row owns the chrome. These rules only match what sits beside them —
+   copy, branch — so the control does not read as a foreign element. */
+
+.action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+  border: none;
+  border-radius: var(--dsw-radius-sm);
+  background: transparent;
+  color: var(--dsw-text-tertiary);
+  cursor: pointer;
+}
+
+.action:hover:not(:disabled) {
+  background: var(--dsw-fill-hover);
+  color: var(--dsw-text-primary);
+}
+
+.action:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.failure {
+  margin-left: 4px;
+  color: var(--dsw-text-danger);
+  font-size: var(--dsw-font-size-xs);
+}

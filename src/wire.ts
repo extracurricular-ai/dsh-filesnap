@@ -27,6 +27,12 @@ export interface RewindPoint {
   /** Epoch ms the turn opened. */
   readonly at: number
   /**
+   * What this turn's capture covered: files kept by reference, files read and
+   * hashed, and files the scan saw and did not store. Absent for a point
+   * recorded before this plugin reported them.
+   */
+  readonly coverage?: { readonly reused: number; readonly hashed: number; readonly dropped: number } | undefined
+  /**
    * First line of the user message that opened the turn, trimmed for a list —
    * absent for a turn that entered no user message, or one whose message is
    * not text.
@@ -37,6 +43,15 @@ export interface RewindPoint {
    * that vanishes, which is not the value that went in.
    */
   readonly label?: string | undefined
+  /**
+   * Id of the assistant message that closed this turn, when one did.
+   *
+   * The browser's per-message action strip is addressed by message id and
+   * nothing else, so this is what lets a bubble find the point that returns
+   * the workspace to before its turn. Last one wins: a turn with three steps
+   * carries three assistant messages, and the rewind belongs under the last.
+   */
+  readonly messageId?: string | undefined
 }
 
 /** Where a rewind out of a session went. */

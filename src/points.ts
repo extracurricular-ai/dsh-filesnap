@@ -108,12 +108,31 @@ export function reducePoints(state: PointsState, event: SessionEvent): PointsSta
         boundary,
         at: event.time,
         ...known?.label === undefined ? {} : { label: known.label },
+        ...known?.messageId === undefined ? {} : { messageId: known.messageId },
+        // A log written before the plugin reported these carries neither
+        // field; `numberField`-shaped defaults would invent a zero that reads
+        // as "nothing tracked" rather than "not recorded".
+        ...typeof event.data.reused !== 'number' || typeof event.data.hashed !== 'number'
+          ? {}
+          : { coverage: { reused: event.data.reused, hashed: event.data.hashed, dropped: event.data.dropped } },
       }
       return {
         ...state,
         points: known === undefined
           ? [...state.points, fresh]
           : state.points.map(point => point.turn === event.data.turn ? fresh : point),
+      }
+    }
+    case 'assistant/message': {
+      // Recorded on the point rather than derived later: only the log knows
+      // which message closed which turn, and the browser sees message ids
+      // without seeing turns.
+      const known = state.points.find(point => point.turn === event.data.turn)
+      if (known === undefined || known.messageId === event.data.message.id) return state
+      return {
+        ...state,
+        points: state.points.map(point =>
+          point.turn === event.data.turn ? { ...point, messageId: event.data.message.id } : point),
       }
     }
     case 'filesnap/rewound':

@@ -45,6 +45,12 @@ const pointSchema = z.object({
   boundary: z.number().int(),
   at: z.number().int(),
   label: z.string().optional(),
+  messageId: z.string().optional(),
+  coverage: z.object({
+    reused: z.number().int().nonnegative(),
+    hashed: z.number().int().nonnegative(),
+    dropped: z.number().int().nonnegative(),
+  }).optional(),
 })
 
 /** Where a rewind went, as it crosses the wire and as it is persisted. */
@@ -78,7 +84,7 @@ const viewSchema = z.object({
  * rows from an older unit are discarded rather than forward-applied into
  * something that no longer means what it says.
  */
-const STATE_VERSION = 1
+const STATE_VERSION = 2
 
 /**
  * Register the `filesnap` projection when the deployment composes a registry.

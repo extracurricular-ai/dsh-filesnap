@@ -43,7 +43,7 @@ describe('the filesnap projection', () => {
     try {
       const session = liveSession(ctx, 'session-a')
       session.append('turn/start', { turn: 1 })
-      session.append('filesnap/point', { turn: 1, point: 'session-a.t1', manifest: 'ab', dropped: 0 })
+      session.append('filesnap/point', { turn: 1, point: 'session-a.t1', manifest: 'ab', reused: 2, hashed: 1, dropped: 0 })
       session.append(
         'user/message',
         createUserMessage({ content: [{ type: 'text', text: 'add a rate limiter' }], source: { kind: 'user' } }),
@@ -52,7 +52,11 @@ describe('the filesnap projection', () => {
       session.append('turn/end', { turn: 1, reason: { kind: 'completed' } })
 
       expect(view(ctx, session)?.points).toEqual([
-        { point: 'session-a.t1', turn: 1, boundary: -1, at: expect.any(Number), label: 'add a rate limiter' },
+        {
+          point: 'session-a.t1', turn: 1, boundary: -1, at: expect.any(Number),
+          label: 'add a rate limiter',
+          coverage: { reused: 2, hashed: 1, dropped: 0 },
+        },
       ])
     } finally {
       await dispose()
@@ -64,7 +68,7 @@ describe('the filesnap projection', () => {
     try {
       const session = liveSession(ctx, 'session-a')
       session.append('turn/start', { turn: 1 })
-      session.append('filesnap/point', { turn: 1, point: 'session-a.t1', manifest: 'ab', dropped: 0 })
+      session.append('filesnap/point', { turn: 1, point: 'session-a.t1', manifest: 'ab', reused: 2, hashed: 1, dropped: 0 })
       session.append('turn/end', { turn: 1, reason: { kind: 'completed' } })
       session.append('filesnap/rewound', {
         point: 'session-a.t1',
@@ -109,7 +113,7 @@ describe('the filesnap projection', () => {
     const { ctx, dispose } = await registry()
     const session = liveSession(ctx, 'session-a')
     session.append('turn/start', { turn: 1 })
-    session.append('filesnap/point', { turn: 1, point: 'session-a.t1', manifest: 'ab', dropped: 0 })
+    session.append('filesnap/point', { turn: 1, point: 'session-a.t1', manifest: 'ab', reused: 2, hashed: 1, dropped: 0 })
     expect(view(ctx, session)).toBeDefined()
     await dispose()
     expect(view(ctx, session)).toBeUndefined()
@@ -123,7 +127,7 @@ describe('the filesnap projection', () => {
     try {
       const session = liveSession(ctx, 'session-a')
       session.append('turn/start', { turn: 1 })
-      session.append('filesnap/point', { turn: 1, point: 'session-a.t1', manifest: 'ab', dropped: 0 })
+      session.append('filesnap/point', { turn: 1, point: 'session-a.t1', manifest: 'ab', reused: 2, hashed: 1, dropped: 0 })
       session.append('turn/end', { turn: 1, reason: { kind: 'completed' } })
 
       const checkpoint = ctx.sessionProjections.checkpoint(session)
@@ -136,7 +140,10 @@ describe('the filesnap projection', () => {
       const restored = ctx.sessionProjections.restore(serialized, [], session.seq)
       const value = restored.snapshot.values.filesnap
       expect(value?.points).toEqual([
-        { point: 'session-a.t1', turn: 1, boundary: -1, at: expect.any(Number) },
+        {
+          point: 'session-a.t1', turn: 1, boundary: -1, at: expect.any(Number),
+          coverage: { reused: 2, hashed: 1, dropped: 0 },
+        },
       ])
     } finally {
       await dispose()

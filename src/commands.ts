@@ -17,16 +17,18 @@
 import type { CommandRuntime, CommandInvocation, CommandResult } from '@deepseek-ai/dsh-commands'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import type { FilesnapRewind, RewindDestination } from './service.ts'
-import type { RedoOutcome, RewindOutcome, RewindPoint, RewindRefusal } from './types.ts'
+import type { FilesnapStatus, RedoOutcome, RewindOutcome, RewindPoint, RewindRefusal } from './types.ts'
 
 /** What `/rewind` accepts, echoed back on a usage error. */
-const REWIND_USAGE = 'Usage: /rewind [<turn>|<point id>] [--into <session id>]'
+const REWIND_USAGE = 'Usage: /rewind [<turn>|<point id>] [--into <session id>] | /rewind status'
   + ' — with no argument, lists the points this session can return to.'
 
 /** One parsed `/rewind` invocation. */
 export type RewindCommand
   /** No argument: show the list rather than act on it. */
   = | { readonly kind: 'list' }
+    /** Ask the engine what it holds and what it does not protect. */
+    | { readonly kind: 'status' }
     /** Rewind, forking the conversation here or filing into a caller's fork. */
     | { readonly kind: 'rewind'; readonly selector: string; readonly into?: string }
     /** The words do not form a `/rewind`. */
@@ -49,6 +51,8 @@ export function parseRewind(rawInput: string): RewindCommand {
   const [selector, ...rest] = words
   /* v8 ignore next -- a non-empty word list has a first word */
   if (selector === undefined) return { kind: 'usage' }
+  // Never ambiguous with a point id: those are `<session>.t<n>`.
+  if (selector === 'status') return rest.length === 0 ? { kind: 'status' } : { kind: 'usage' }
   if (selector.startsWith('--')) return { kind: 'usage' }
   if (rest.length === 0) return { kind: 'rewind', selector }
   if (rest.length !== 2 || rest[0] !== '--into') return { kind: 'usage' }
@@ -174,6 +178,49 @@ function redoResult(outcome: RedoOutcome): CommandResult {
   return { kind: 'success', text: lines.join('\n'), sourceEventSeq: outcome.eventSeq }
 }
 
+/** Render a byte count the way a person reads one. */
+function bytes(count: number): string {
+  if (count < 1024) return `${String(count)} B`
+  const units = ['KB', 'MB', 'GB', 'TB']
+  let value = count / 1024
+  let unit = 0
+  while (value >= 1024 && unit < units.length - 1) { value /= 1024; unit++ }
+  return `${value.toFixed(value < 10 ? 1 : 0)} ${units[unit] ?? 'TB'}`
+}
+
+/**
+ * Render the workspace's protection and usage picture.
+ *
+ * The unprotected list is the point of the command, so it is printed in full
+ * rather than sampled: a bound you have to guess at is not a bound.
+ *
+ * @param status - what the engine reported.
+ * @returns the command result a UI shows.
+ */
+function statusResult(status: FilesnapStatus): CommandResult {
+  const lines = [
+    `Workspace: ${status.workspace}`,
+    `Disk: ${bytes(status.recordsBytes)} of records here, ${bytes(status.sharedContentBytes)} of content shared with every workspace.`,
+    '',
+  ]
+  if (status.sessions.length === 0) {
+    lines.push('No session has captured anything in this workspace yet.')
+  } else {
+    lines.push('Sessions with snapshots here:')
+    for (const session of status.sessions) {
+      lines.push(`  ${session.session} — ${String(session.turns)} turn(s), ${session.earliest} … ${session.latest}`)
+    }
+  }
+  lines.push('')
+  if (status.unprotected.length === 0) {
+    lines.push('Every file the scan saw is protected.')
+  } else {
+    lines.push(`${String(status.unprotected.length)} file(s) the scan saw and did NOT store — a rewind will not put these back:`)
+    for (const file of status.unprotected) lines.push(`  ${file.reason}\t${file.path}`)
+  }
+  return { kind: 'success', text: lines.join('\n') }
+}
+
 /**
  * Execute one `/rewind` invocation.
  *
@@ -187,6 +234,10 @@ async function runRewind(service: FilesnapRewind, invocation: CommandInvocation)
   if (command.kind === 'list') {
     const points = await service.points(invocation.agent, invocation.signal)
     return points.ok ? listResult(points.value) : refusalResult(points.refusal)
+  }
+  if (command.kind === 'status') {
+    const status = await service.status(invocation.agent, invocation.signal)
+    return status.ok ? statusResult(status.value) : refusalResult(status.refusal)
   }
   const destination: RewindDestination = command.into === undefined
     ? { kind: 'fork' }
@@ -227,7 +278,7 @@ export function registerCommands(commands: CommandRuntime, service: FilesnapRewi
   commands.register({
     name: 'rewind',
     description: 'put the workspace and the conversation back to the start of an earlier turn',
-    input: { hint: '[<turn>|<point id>] [--into <session id>]' },
+    input: { hint: '[<turn>|<point id>] [--into <session id>] | status' },
     handler: invocation => runRewind(service, invocation),
   })
   commands.register({
