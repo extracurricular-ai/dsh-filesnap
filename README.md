@@ -324,6 +324,39 @@ A diff view and per-file restore are the one thing the checkpoint pair has that
 this does not. Both are on the roadmap: every point is a content-addressed
 manifest, so a diff between two points is a query rather than a redesign.
 
+### If the rewind itself is interrupted
+
+Every row above asks whether a rewind works. None of them asks what happens when
+the rewind is the thing that breaks — the moment with the most to lose, because
+half a restore is a workspace in a state that never existed.
+
+**A restore here deletes a file only against a tombstone.** A capture records a
+path as absent only when it *verified* the path was absent. A path it could not
+read — a permission error, a directory it could not traverse, a transient IO
+failure — is skipped, never recorded as absent, because a tombstone is the only
+licence a restore has to delete. The engine carries a test named for exactly
+this: `a_path_that_cannot_be_read_is_skipped_rather_than_declared_absent`.
+
+The reason to care is that the opposite is easy to write and silent when it
+fires. Any design that reads *not in my snapshot* as *delete it* will, after one
+unreadable file at capture time, delete a file whose contents it never stored.
+**This is not a claim about the other plugins** — we have not read every restore
+path in every package, and no table here will pretend otherwise. It is worth
+checking in whichever one you run.
+
+**The rescue point exists before the first byte lands.** A restore captures one
+*before* it writes, not after it finishes, so a rewind that dies partway is
+still reversible — that snapshot is what `/redo` hands back.
+
+**The store is not in your project.** It lives in the platform data directory —
+`$XDG_DATA_HOME` or `~/.local/share` on Unix, `%LOCALAPPDATA%` on Windows — so
+`git clean -xdf`, a fresh clone, or deleting `node_modules` costs you nothing.
+
+**It refuses rather than guesses.** A rewind while the agent is mid-turn is
+refused, not raced against the tools still writing. A turn whose capture failed
+is *absent* from the list rather than listed and refused on use — a checkpoint
+that cannot be honoured is worse than no checkpoint, because you plan around it.
+
 ### Nothing is deleted for being old
 
 Every other plugin here bounds its store by age or by count, so the point you
@@ -335,6 +368,24 @@ point unreachable, `gc` collects only what is already orphaned and only after a
 grace window, and `doctor` clears what an interrupted operation left behind.
 Blobs are shared across every point that holds them, so keeping more points
 costs what changed between them, not a copy of the tree per point.
+
+> [!NOTE]
+> **Those three are engine commands this plugin does not expose yet.** What is
+> written above holds today — nothing prunes a point behind your back — but the
+> levers for reclaiming space, or for clearing what an interrupted operation
+> left, are still being wired into `/rewind`, with browser controls after that.
+> Saying so here rather than letting you discover it: `/rewind status` currently
+> reports a disk figure and offers no way to act on it.
+>
+> Until then the engine is right there, and the agent can run it for you:
+>
+> ```shell
+> ~/.dsh/profiles/<profile>/node_modules/.bin/filesnap gc
+> ~/.dsh/profiles/<profile>/node_modules/.bin/filesnap doctor --workdir .
+> ~/.dsh/profiles/<profile>/node_modules/.bin/filesnap delete --session <id>
+> ```
+>
+> See [Roadmap](#roadmap).
 
 **And you can ask what it holds.** `/rewind status` re-scans and answers the
 question nothing else answers — **which files in this project are not protected,
@@ -625,6 +676,40 @@ includes this plugin already has a checkout.
 - **Coverage of shell-written files follows the scan.** A file a shell command
   creates outside the workspace, over the size limit, or beyond the recency
   budget is covered only if it also went through the filesystem seam.
+
+## Roadmap
+
+Ordered by what is most in the way, not by what is quickest. Everything here is
+traceable to a gap named in this README or a marker in the source.
+
+**`/rewind gc`, `/rewind doctor`, `/rewind delete <session>`.** The engine has
+all three and the plugin exposes none, which is why `/rewind status` reports a
+disk figure you cannot act on from inside dsh. Commands first, browser controls
+after; the interim invocation is under
+[Nothing is deleted for being old](#nothing-is-deleted-for-being-old).
+
+**A diff between two points, and per-file restore.** The one thing the
+checkpoint pair has that this does not. Every point is a content-addressed
+manifest, so this is a query rather than a redesign.
+
+**Browser controls beyond rewind.** The rewind control sits in each turn's
+message row and the status strip in the session header. Everything else —
+status detail, reclamation, deletion — is command-only, and the browser half is
+typecheck-verified and built rather than browser-tested, so that surface grows
+slowly on purpose.
+
+**Declaring session event types without mutating a harness constant.** The one
+thing this costs you today: three event types are declared by writing into a
+constant another package exports, which is why uninstalling strands the sessions
+it captured. The fix belongs upstream — a supported declaration point for an
+out-of-repo plugin, or an `ignorable` marker the reader honours. Tracked in the
+source as `FIXME(upstream-event-registration)`.
+
+**Archiving a rewound conversation, once one can be unarchived.** A rewind marks
+the conversation it leaves with `↩` instead of archiving it, because
+`unarchiveSession` does not exist and an archive `/redo` cannot reverse is a
+trap. Feature-detected the moment it lands. Tracked as
+`XXX(archive-when-reversible)`.
 
 ## Where this came from
 
