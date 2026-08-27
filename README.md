@@ -105,23 +105,69 @@ $ cargo install filesnap-cli    # or: npm i -g filesnap
 $ filesnap --version
 ```
 
-Then add the plugin to a profile:
+Then add the plugin to a profile — `dsh plugin` forwards its arguments to pnpm
+inside the profile directory:
 
 ```console
 $ dsh plugin --profile web add dsh-filesnap
+dsh: warning: dsh-filesnap declares no dsh.bundle — installed as a plain
+dependency, not a profile layer
 ```
 
-and mount it in that profile's `cordis.patch.yml`:
+That warning is expected: this is a plugin, not a bundle, so it is mounted by a
+row rather than by a layer. Add one to that profile's `cordis.patch.yml`
+(`~/.dsh/profiles/web/cordis.patch.yml`):
 
 ```yaml
+# `insert` takes a list of rows.
 - insert:
-    id: filesnap
-    name: dsh-filesnap
-    config: {}
+    - id: filesnap
+      name: dsh-filesnap
 ```
 
 `dsh --profile web --dump-config` prints the tree that actually boots, so you
-can check the row landed.
+can check the row landed:
+
+```console
+$ dsh --profile web --dump-config | grep -A 1 filesnap
+- id: filesnap
+  name: dsh-filesnap
+```
+
+## Trying it locally
+
+From a checkout, before publishing anything:
+
+```console
+$ npm run build                                   # lib/ is what the profile loads
+$ dsh plugin --profile headless add /path/to/this/repo
+```
+
+Add the same `insert` row to `~/.dsh/profiles/headless/cordis.patch.yml`,
+confirm it composes with `--dump-config`, then run a task in a scratch
+directory:
+
+```console
+$ cd /tmp/scratch && echo hello > notes.txt
+$ dsh --profile headless "change notes.txt to say goodbye"
+```
+
+The session's working directory is wherever you run it, so run it in the
+project you want snapshotted. Afterwards, ask the engine directly what it
+recorded — the session id is the one in the transcript:
+
+```console
+$ filesnap log --session <session-id>
+{"v":1,"type":"log.entry","turn":"<session-id>.t1","manifest":"a1b2…","at":…,"files":2,"absent":0}
+
+$ filesnap status | jq -r 'select(.type=="status.unprotected") | "\(.reason)\t\(.path)"'
+```
+
+`pnpm dsh --profile headless "…"` runs the harness from source instead, if you
+have its checkout. That launch resolves workspace packages through the
+repository's own tsconfig, so it must run with the harness as the working
+directory — which makes it the wrong way to snapshot some *other* directory.
+Use an installed `dsh` for that.
 
 ## Configuration
 
