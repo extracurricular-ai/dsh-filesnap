@@ -28,11 +28,35 @@ The conversation continues in session-9f3c1a04-….
 Run /redo there to reverse this rewind.
 ```
 
-The snapshot engine is [filesnap](https://github.com/extracurricular-ai/filesnap),
-a content-addressed store that puts a directory back the way it was at an
-earlier moment. This package is the harness half: it decides *when* to
-snapshot, what a rewind point means in a conversation, and how the two halves
-of a rewind are sequenced.
+## The engine is [filesnap](https://github.com/extracurricular-ai/filesnap)
+
+**The load-bearing logic is not in this repository.** Snapshotting and restoring
+is [filesnap](https://github.com/extracurricular-ai/filesnap) — a
+content-addressed store, written in Rust, that puts a directory back the way it
+was at an earlier moment. The bounded scan, the content addressing, the atomic
+restore and the store format all live there, and that is the repository to read
+if you want to know how the files actually move.
+
+It ships as one 4 MB static binary with no runtime to install, and it runs once
+per turn in front of a model request that takes seconds:
+
+| | files captured | first capture | every capture after |
+|---|---|---|---|
+| this repository | 84 | 20 ms | **8 ms** |
+| the harness monorepo | 7,995 of 70,918 on disk | 1.75 s | **268 ms** |
+
+The second column is the bounded scan: a snapshot covers what a turn can
+plausibly touch rather than everything under the root, which is why a
+70,000-file checkout does not cost 70,000 files of work. The last column is
+content addressing — the second capture of this repository hashed nothing and
+reused all 84 files, so ten turns that change one file cost one file of storage,
+not ten copies.
+
+*(Measured on this machine with `filesnap capture`, warm page cache. Your
+numbers will differ; the shape won't.)*
+
+This package is the harness half: it decides *when* to snapshot, what a rewind
+point means in a conversation, and how the two halves of a rewind are sequenced.
 
 > **Before you install:** the plugin records its rewind points as session
 > events, and the harness has no supported way for an out-of-repo plugin to
