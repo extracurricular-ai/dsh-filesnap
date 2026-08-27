@@ -73,8 +73,24 @@ The host plugin can fork by itself and does so for a headless run. In the web
 it must not: a second fork beside the deployment's correct one would leave the
 child out of the workspace it belongs to.
 
-Loading it needs the plugin in a web build's client composition; a deployment
-that wants only the commands loads the host half and ignores this.
+**It loads off the same row.** The web shell scans the host Loader's mounted
+entries, resolves each one's `package.json`, and serves the `./client` export
+of any that declares `dsh.client` — so the `- id: filesnap` row that mounts the
+host half is also what puts `lib/client.js` on
+`/plugins/dsh-filesnap/client.js`. There is nothing to add to a web build and
+no static module table to edit.
+
+It does need `npm run build:client` to have run. Without it the shell says so
+by name at launch:
+
+```
+client-modules: client bundle not found; run `pnpm run build` before launch:
+  package: dsh-filesnap
+  path: …/lib/client.js
+```
+
+A deployment that wants only the commands builds the host half and never runs
+`build:client`; the row still works, with no browser entry.
 
 ## Commands
 
