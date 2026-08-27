@@ -1,7 +1,7 @@
 {
   "name": "dsh-filesnap",
   "version": "0.2.0",
-  "description": "A blazing-fast rewind and redo plugin for DeepSeek Harness, powered by a \ud83e\udd80 Rust core.",
+  "description": "A blazing-fast rewind and redo plugin for DeepSeek Harness, powered by a 🦀 Rust core.",
   "type": "module",
   "main": "lib/index.js",
   "types": "lib/types/index.d.ts",
@@ -124,9 +124,10 @@
   "dsh": {
     "client": {
       "inject": [
-        "@deepseek-ai/dsh-client-runtime",
+        "@deepseek-ai/dsh-api-session-controller",
         "@deepseek-ai/dsh-client-locale",
-        "@deepseek-ai/dsh-client-ui-conversation"
+        "@deepseek-ai/dsh-client-ui-conversation",
+        "@deepseek-ai/dsh-client-ui-renderer"
       ],
       "platform": "web"
     }

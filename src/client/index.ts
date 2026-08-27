@@ -48,7 +48,8 @@ import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 // Type-only: the `filesnap` SessionProjectionMap key merge, from the pure-type
 // outlet — importing the host's projection module here would merge the host's
-// `ctx.sessions` onto the client runtime's key.
+// `sessions` (a `SessionStore`) over the browser's, which is the
+// session-controller's `ISessions` and the only one with `fork` and `open`.
 import type { RewindPoint } from '../wire.ts'
 import type { RewindActionResult, RewindActions, RewindHeaderActions } from './actions.ts'
 import { RewindAction } from './RewindAction.tsx'
