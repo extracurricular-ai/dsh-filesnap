@@ -483,6 +483,34 @@ includes this plugin already has a checkout.
   creates outside the workspace, over the size limit, or beyond the recency
   budget is covered only if it also went through the filesystem seam.
 
+## Where this came from
+
+This plugin is the dsh half of an idea that was worked out first in
+**[codex-rewind](https://github.com/extracurricular-ai/codex-rewind)** — an
+unofficial distribution of [OpenAI's Codex CLI](https://github.com/openai/codex)
+that adds `/rewind` and `/redo` to it, from the same people as this repository
+and under the same licence.
+
+The design here is that design. What gets tracked is the same union it arrived
+at — the files git already tracks, the files the agent edits wherever they live,
+and a bounded sweep of recent changes for whatever a shell command touched —
+along with the decisions that shape it: `.git` is never read, hidden files are
+left alone because tool state is not your work, and an ignored path is never
+snapshotted, never restored and never deleted. What is new here is the harness
+half: when to snapshot, what a rewind point means once a conversation can fork,
+and how the two halves are sequenced.
+
+**If this is useful to you and you also use Codex, that is where to go.** It
+installs as `codexr`, beside the official build rather than over it:
+
+```shell
+npm install -g codex-rewind
+```
+
+There is also a [walkthrough](https://youtu.be/OpJI8NQ-mvY) that spends most of
+its length on why git is the wrong foundation for this and where the approach
+stops — the reasoning behind both projects, not a feature tour.
+
 ## Licence
 
 Apache-2.0. See [LICENSE](LICENSE). The engine it drives,

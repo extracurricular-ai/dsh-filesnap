@@ -286,6 +286,30 @@ $ npm run build:client   # lib/client.js —— 需要 harness checkout
 - **抓取失败的那一轮不提供回退点。** 失败信息在 stderr;那个点是缺席,而不是被列出来然后在使用时被拒绝。
 - **shell 写出的文件,其覆盖范围跟随扫描。** shell 命令在工作区外创建的文件、超过大小上限的、或超出最近性预算的,只有在它同时经过文件系统 seam 时才被覆盖。
 
+## 这个项目从哪来
+
+本插件是一个想法在 dsh 这一侧的实现,而这个想法最先是在
+**[codex-rewind](https://github.com/extracurricular-ai/codex-rewind)** 里做通的
+—— 那是 [OpenAI Codex CLI](https://github.com/openai/codex) 的一个非官方发行版,
+给它加上了 `/rewind` 和 `/redo`,和本仓库出自同一批人,许可也相同。
+
+这里的设计就是那边的设计。追踪范围是同一个并集 —— git 已经追踪的文件、agent 编辑
+过的文件(不管它在哪),以及一次有界的近期改动扫描来兜住 shell 命令碰过的东西 ——
+连同那些塑造它的判断:从不读 `.git`;隐藏文件默认不管,因为工具状态不是你的工作;
+被忽略的路径永不快照、永不还原、也永不删除。这边新增的是 harness 那一半:什么时候
+快照、当对话可以 fork 之后一个回退点还意味着什么,以及一次回退的两半按什么顺序发生。
+
+**如果本插件对你有用,而你也在用 Codex,那就该去看看它。** 它安装为 `codexr`,
+是装在官方版**旁边**而不是覆盖掉它:
+
+```shell
+npm install -g codex-rewind
+```
+
+另外还有一个[讲解视频](https://youtu.be/OpJI8NQ-mvY),大部分篇幅在讲**为什么 git
+不适合做这件事的地基**、以及这套方法到哪里为止 —— 是两个项目背后的推理,不是功能
+演示。
+
 ## 许可
 
 Apache-2.0,见 [LICENSE](LICENSE)。它驱动的引擎 [filesnap](https://github.com/extracurricular-ai/filesnap) 使用同一许可。
