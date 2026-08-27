@@ -1,8 +1,14 @@
 # dsh-filesnap
 
+[![npm](https://img.shields.io/npm/v/dsh-filesnap?color=cb3837&logo=npm&logoColor=white)](https://www.npmjs.com/package/dsh-filesnap)
+[![CI](https://github.com/extracurricular-ai/dsh-filesnap/actions/workflows/ci.yml/badge.svg)](https://github.com/extracurricular-ai/dsh-filesnap/actions/workflows/ci.yml)
+[![licence](https://img.shields.io/npm/l/dsh-filesnap?color=1f6feb)](LICENSE)
+[![engine: Rust](https://img.shields.io/badge/engine-Rust-b7410e?logo=rust&logoColor=white)](https://github.com/extracurricular-ai/filesnap)
+[![git not required](https://img.shields.io/badge/git-not%20required-2ea44f)](#每一个各自的风险)
+
 [English](README.md) | 中文
 
-[DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 的回退与撤销。
+一个快得离谱的 rewind / redo 插件,给 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness),核心由 **🦀 Rust** 实现。
 
 回到某一轮开始时的状态 —— **对话和它改过的文件一起回去**。在从没 `git init` 过的项目里能用,在用着 git 的项目里也能用:你的 commit、stash、工作区状态一概不动,也不会往你的仓库里存任何东西。
 
@@ -122,6 +128,81 @@ client-modules: client bundle not found; run `pnpm run build` before launch:
 `/rewind` 接受列表里显示的轮次编号,或者点 id 原文。**没有**"往回三步"这种写法 —— 引擎刻意拒绝相对寻址,因为恢复操作会覆盖你的文件,而相对索引差一位既容易犯又容易漏掉。对着一张你正在看的列表数,和对着一个你以为的索引数,不是一回事。
 
 两个命令都不经过模型轮次。回退是你**对**这段对话做的事,所以它不该经手被回退的那个东西。
+
+## 和其他 dsh rewind 插件的对比
+
+**一次回退该做的事,这里只有一个全做到了。** 内容读取于 2026-08-27,均出自各项目自己的文档。
+
+> [!CAUTION]
+> **其中三个会让你丢东西,而且下面每一句都能在它们发布出去的包里核到。**
+>
+> 1. **`git gc` 会删掉你的回退点。** `dsh-rewind` 和 `dsh-checkpoint-rewind` 把唯一的快照放在没有任何引用的 git 对象里:`dsh-checkpoint-rewind` 0.6.1 整个包里找不到一处 `update-ref`,而 `git stash create` 也不写 stash reflog。无引用对象正是 `git gc` 要清的东西 —— 过了 `gc.pruneExpire` 自动清,`git gc --prune=now` 立刻清。你整理一下自己的仓库,安全网就没了,而且不会有任何提示。
+> 2. **一次恢复会写坏每一个二进制文件。** `dsh-rewind-plugin` 0.4.2 用 `readFile(path, "utf8")` 存 pre-image,用 `writeFile(path, content, "utf8")` 还原 —— `lib/index.js:207` 和 `:607`,整个包里没有 `Buffer`、没有 base64、没有任何二进制判定。凡是不合法的 UTF-8 字节,回来的时候都是 `U+FFFD`。图片、PDF、数据库都活不过它的一次回退。
+> 3. **一次回退会扔掉 agent 根本没碰过的工作。** `dsh-rewind` 用 `git reset --hard` 做恢复,而它自己的限制一节写着这覆盖"整个仓库工作树……包括在 DSH 工具之外做出的改动" —— 你没提交的手改会一起没,你的分支指针也会移动。
+>
+> 这些都不是"别用回退"的理由。它们是"快照存储不该是你的版本控制"的理由。
+
+### 一次回退该做的事
+
+| | 引擎 | 文件 | 对话 | 撤销回退 | shell 写的 | 二进制文件 | `git` 忽略的 | **项目目录外** | 原对话完整 |
+|---|:--:|:--:|:--:|:--:|:--:|:--:|:--:|:--:|:--:|
+| **dsh-filesnap** 0.2.0 | **🦀 Rust** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | **✅** | ✅ |
+| [dsh-rewind](https://www.npmjs.com/package/dsh-rewind) 0.11.12 | JS | ✅ | ✅ | ⚠️ 只到最近一次 | ✅ | ✅ | ❌ | ❌ | ❌ 被遮蔽 |
+| [dsh-checkpoint-rewind](https://www.npmjs.com/package/dsh-checkpoint-rewind) 0.6.1 | JS | ✅ | ✅ | ⚠️ 靠守护点 | ✅ | ✅ | ⚠️ | ❌ | ✅ |
+| [dsh-rewind-plugin](https://www.npmjs.com/package/dsh-rewind-plugin) 0.4.2 | JS | ✅ | ✅ | ❌ | ❌ | ☠️ | ✅ | ⚠️ | ❌ 被遮蔽 |
+| [@anionex/dsh-turn-rewind](https://www.npmjs.com/package/@anionex/dsh-turn-rewind) 0.1.2 | JS | ✅ | ⚠️ 可选 | ⚠️ 走 API | ✅ | ✅ | ❌ | ❌ | ✅ |
+| [dsh-recall-plugin](https://www.npmjs.com/package/dsh-recall-plugin) 2.0.0 | JS | ✅ | ✅ | ❌ | ✅ | ✅ | ⚠️ | ❌ | ⚠️ 被归档 |
+| [@zoytown/dsh-rewind](https://www.npmjs.com/package/@zoytown/dsh-rewind) 0.1.0 | JS | ✅ | ❌ | ✅ 只有文件 | ✅ | ✅ | ❌ | ❌ | ✅ |
+| [@flow2dream/dsh-msg-rewind](https://www.npmjs.com/package/@flow2dream/dsh-msg-rewind) 0.1.6 | JS | ❌ | ✅ | ❌ | ❌ | —— | ❌ | ❌ | ❌ 被截断 |
+
+### 每一个各自的风险
+
+✅ 永远是安全的那一侧。☠️ 是数据丢失风险,不是"少个功能"。
+
+| | 不需要 `git` | 不写你的仓库 | 扛得住 `git gc` | 存储的边界是什么 | 捕获代价随什么增长 |
+|---|:--:|:--:|:--:|---|---|
+| **dsh-filesnap** 0.2.0 | ✅ | ✅ | ✅ 我们没有任何东西在 git 里 | **可达性** —— 有引用就活着 | **不随任何东西增长** —— 每轮一次有界并集 |
+| [dsh-rewind](https://www.npmjs.com/package/dsh-rewind) 0.11.12 | ❌ 没有就替你建 | ☠️ `git init`、`reset --hard` | ☠️ **扛不住** —— 无引用的 stash 对象 | 你自己仓库的 `gc` | 目录树 |
+| [dsh-checkpoint-rewind](https://www.npmjs.com/package/dsh-checkpoint-rewind) 0.6.1 | ⚠️ 有 copy 降级 | ☠️ 写 `.git/objects` | ☠️ **扛不住** —— 无引用对象 | 每会话 50 个点 + 512 MiB | 目录树 |
+| [dsh-rewind-plugin](https://www.npmjs.com/package/dsh-rewind-plugin) 0.4.2 | ✅ | ✅ | ✅ | 每会话 100 组锚点 | ☠️ **会话长度** —— 整份拷贝,不去重 |
+| [@anionex/dsh-turn-rewind](https://www.npmjs.com/package/@anionex/dsh-turn-rewind) 0.1.2 | ❌ 只支持 git worktree | ✅ | ✅ | 每会话 50 个点 + 30 个自动点 | 目录树 |
+| [dsh-recall-plugin](https://www.npmjs.com/package/dsh-recall-plugin) 2.0.0 | ❌ 需要 CLI | ✅ 影子仓库 | ✅ | ⚠️ 没有边界 —— 它从不剪枝 | 目录树 |
+| [@zoytown/dsh-rewind](https://www.npmjs.com/package/@zoytown/dsh-rewind) 0.1.0 | ❌ 需要 CLI | ✅ 影子仓库 | ✅ | 30 天、每工作区 50 个会话 | 目录树 |
+| [@flow2dream/dsh-msg-rewind](https://www.npmjs.com/package/@flow2dream/dsh-msg-rewind) 0.1.6 | ✅ | ✅ | —— | —— | —— |
+
+**"捕获代价随什么增长"是那种最晚被发现、最早开始后悔的一列。** `dsh-rewind-plugin` 在每条消息边界重新检查它跟踪过的每一个文件,而且每份备份都是整份文件拷贝 —— 于是每轮的扫描和磁盘占用都随你聊了多久而增长。git 那几个走工作树,所以它们随目录树增长。这里的跟踪集是三个分区的并集,每个分区的边界都不是目录树的大小,declared 集合还会按滚动窗口老化 —— 这就是为什么 70,918 个文件只要 268 ms,以及为什么第二次捕获本仓库时一个哈希都没算。
+
+这两张表背后另外三个事实,每一条都能在对方发布出去的包里核到:
+
+- **只有这一个跟得住 agent 在项目目录之外的修改。** git 设计在构造上就被工作树框死了:agent 改的是 `~/.config` 里的文件、隔壁一个 checkout 里的文件、或者别的任何地方,那都不在任何人的树里,于是既快照不了,也回不来。这里的 pre-image 是在写入发生的那一刻记下的,路径指到哪里就记到哪里 —— edit-touched 这个分区的边界是 agent 做了什么,不是根目录下面有什么。
+- **agent 新建的文件可能在它的回退后还留着:**"快照不包含 untracked 文件"。一次把本轮新文件留在磁盘上的回退,不是回退。
+- **装机量最大的 `dsh-rewind-plugin` 无法撤销自己的回退** —— 它自己写着。就地遮蔽之后没有东西可以交还,而 fork 正是 `/redo` 能存在的前提。
+
+### 体积与速度
+
+| | 快照引擎 | 安装需要 | 捕获 70,918 文件的 checkout |
+|---|---|---|---|
+| **dsh-filesnap** | **编译过的 Rust**,一个静态二进制 | 0.23 MB 插件 + 4 MB 引擎,**再无其他** | **268 ms**,实测,数字在本 README 里 |
+| 五个用 git 的 | JavaScript,每轮 spawn 一次 `git` CLI | 0.05–0.81 MB,**外加机器上要装一个 `git`** | 未公布 |
+| 两个不用 git 的 | JavaScript,就在你会话的那个 Node 进程里 | 0.37–1.15 MB | 未公布 |
+
+**这里其他每一个插件都是用 JavaScript 做快照的。** 它们要么在正跑着你会话的那个 Node 进程里读文件、算哈希、拷贝,要么每轮 shell out 一次 `git`。这里的活是编译过的:有界扫描、内容哈希和原子恢复都是原生代码,跑在一个独立进程里 —— 这就是为什么一个 70,918 文件的 checkout 花 268 ms,而再捕获本仓库一次只花 8 ms。没有第二家给出过数字。
+
+引擎是这里最大的单个产物,而它同时就是全部依赖:没有运行时,没有 `git`,没有要装配的存储栈。`dsh-checkpoint-rewind` 要再加三行 profile 才存在第一个检查点。
+
+diff 视图和逐文件恢复是 checkpoint 那一对有、而这里还没有的东西。两者都在 roadmap 上:每个点都是一份内容寻址的 manifest,所以两点之间的 diff 是一次查询,不是一次重新设计。
+
+### 不会因为旧而被删
+
+这里其他每一个插件都按年龄或数量给存储设界,于是你想要的那个点会被你根本没要的点挤掉 —— `@zoytown/dsh-rewind` 更是直说:限额一到是整个会话一起删。
+
+这里没有任何东西因为旧而被回收。`delete` 是唯一能让一个点变得不可达的操作,`gc` 只收已经成为孤儿的东西、而且要过了宽限窗口才收,`doctor` 清理的是某次中断的操作留下的残骸。blob 在所有持有它的点之间共享,所以多留点位的代价是点与点之间变了什么,而不是每个点一份树的副本。
+
+**而且你可以问它存了什么。** `/rewind status` 会重新扫描,回答一个别处没人回答的问题 —— **这个项目里哪些文件没有被保护,以及为什么**:太大、读不了、不是普通文件。它同时报告占用的磁盘,并按"本工作区的记录"和"共享的 blob 存储"分开算,以及这里每个会话能往回走多远。它是只读的,所以你可以先看再决定。
+
+### 它唯一让你付的代价
+
+那些复用既有事件类型、或者把状态放在会话日志之外的设计,卸载后不留痕迹。本插件在加载时声明三个 session 事件类型,而这个声明不可能在不重新弄坏那些日志的前提下撤销,所以**卸载它会让它抓过快照的会话变得不可读**。见[已知限制](#已知限制)。
 
 ## 安装
 

@@ -1,7 +1,7 @@
 {
   "name": "dsh-filesnap",
   "version": "0.2.0",
-  "description": "Rewind and redo for DeepSeek Harness: put the workspace and the conversation back to the start of an earlier turn, without a repository and without touching your version control.",
+  "description": "A blazing-fast rewind and redo plugin for DeepSeek Harness, powered by a \ud83e\udd80 Rust core.",
   "type": "module",
   "main": "lib/index.js",
   "types": "lib/types/index.d.ts",
@@ -26,14 +26,30 @@
   "license": "Apache-2.0",
   "keywords": [
     "dsh",
-    "deepseek-harness",
     "dsh-plugin",
+    "deepseek-harness",
+    "deepseek",
     "cordis",
-    "filesnap",
+    "cordis-plugin",
     "rewind",
+    "redo",
     "undo",
+    "revert",
+    "rollback",
+    "restore",
+    "checkpoint",
     "snapshot",
-    "checkpoint"
+    "file-history",
+    "time-machine",
+    "workspace",
+    "workspace-backup",
+    "session-fork",
+    "coding-agent",
+    "ai-agent",
+    "agent-safety",
+    "rust",
+    "git-free",
+    "filesnap"
   ],
   "engines": {
     "node": "^22.19 || >=24"

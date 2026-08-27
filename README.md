@@ -1,8 +1,14 @@
 # dsh-filesnap
 
+[![npm](https://img.shields.io/npm/v/dsh-filesnap?color=cb3837&logo=npm&logoColor=white)](https://www.npmjs.com/package/dsh-filesnap)
+[![CI](https://github.com/extracurricular-ai/dsh-filesnap/actions/workflows/ci.yml/badge.svg)](https://github.com/extracurricular-ai/dsh-filesnap/actions/workflows/ci.yml)
+[![licence](https://img.shields.io/npm/l/dsh-filesnap?color=1f6feb)](LICENSE)
+[![engine: Rust](https://img.shields.io/badge/engine-Rust-b7410e?logo=rust&logoColor=white)](https://github.com/extracurricular-ai/filesnap)
+[![git not required](https://img.shields.io/badge/git-not%20required-2ea44f)](#what-each-one-risks)
+
 English | [中文](README.zh.md)
 
-Rewind and redo for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness).
+A blazing-fast rewind and redo plugin for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness), powered by a **🦀 Rust** core.
 
 Go back to the start of an earlier turn — the conversation *and* the files it
 changed — in a project that has never seen `git init`, and in one that has.
@@ -211,6 +217,138 @@ same as counting against an index you assumed.
 
 Both dispatch without a model turn. Rewinding is something you do *to* the
 conversation, so it does not go through the thing being rewound.
+
+## Compared with the other dsh rewind plugins
+
+**Everything a rewind has to do, only one of these does all of.** Read from each
+project's own documentation on 2026-08-27.
+
+> [!CAUTION]
+> **Three of these can lose your work, and every claim here is verifiable in the
+> package they ship.**
+>
+> 1. **`git gc` deletes your rewind points.** `dsh-rewind` and
+>    `dsh-checkpoint-rewind` keep their only snapshot in git objects that nothing
+>    references: `update-ref` appears nowhere in `dsh-checkpoint-rewind` 0.6.1,
+>    and `git stash create` writes no reflog entry. Unreferenced objects are
+>    exactly what `git gc` prunes — automatically once past `gc.pruneExpire`,
+>    immediately under `git gc --prune=now`. Tidying your repository destroys
+>    your safety net, and nothing tells you it is gone.
+> 2. **A restore corrupts every binary file.** `dsh-rewind-plugin` 0.4.2 captures
+>    pre-images with `readFile(path, "utf8")` and restores with
+>    `writeFile(path, content, "utf8")` — `lib/index.js:207` and `:607`, with no
+>    `Buffer`, no base64 and no binary detection anywhere in the package. Every
+>    byte that is not valid UTF-8 comes back as `U+FFFD`. Images, PDFs and
+>    databases do not survive its rewind.
+> 3. **A rewind throws away work the agent never touched.** `dsh-rewind` restores
+>    with `git reset --hard`, which its own limitations describe as covering "the
+>    whole repository working tree … including changes made outside DSH tools" —
+>    your uncommitted edits go with it, and your branch pointer moves.
+>
+> None of this is an argument against rewinding. It is an argument that the
+> snapshot store must not be your version control.
+
+### What a rewind has to do
+
+| | engine | files | conversation | undo | shell writes | binary files | `git`-ignored | **outside the project** | original intact |
+|---|:--:|:--:|:--:|:--:|:--:|:--:|:--:|:--:|:--:|
+| **dsh-filesnap** 0.2.0 | **🦀 Rust** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | **✅** | ✅ |
+| [dsh-rewind](https://www.npmjs.com/package/dsh-rewind) 0.11.12 | JS | ✅ | ✅ | ⚠️ latest only | ✅ | ✅ | ❌ | ❌ | ❌ masked |
+| [dsh-checkpoint-rewind](https://www.npmjs.com/package/dsh-checkpoint-rewind) 0.6.1 | JS | ✅ | ✅ | ⚠️ guard point | ✅ | ✅ | ⚠️ | ❌ | ✅ |
+| [dsh-rewind-plugin](https://www.npmjs.com/package/dsh-rewind-plugin) 0.4.2 | JS | ✅ | ✅ | ❌ | ❌ | ☠️ | ✅ | ⚠️ | ❌ masked |
+| [@anionex/dsh-turn-rewind](https://www.npmjs.com/package/@anionex/dsh-turn-rewind) 0.1.2 | JS | ✅ | ⚠️ optional | ⚠️ via API | ✅ | ✅ | ❌ | ❌ | ✅ |
+| [dsh-recall-plugin](https://www.npmjs.com/package/dsh-recall-plugin) 2.0.0 | JS | ✅ | ✅ | ❌ | ✅ | ✅ | ⚠️ | ❌ | ⚠️ archived |
+| [@zoytown/dsh-rewind](https://www.npmjs.com/package/@zoytown/dsh-rewind) 0.1.0 | JS | ✅ | ❌ | ✅ files only | ✅ | ✅ | ❌ | ❌ | ✅ |
+| [@flow2dream/dsh-msg-rewind](https://www.npmjs.com/package/@flow2dream/dsh-msg-rewind) 0.1.6 | JS | ❌ | ✅ | ❌ | ❌ | — | ❌ | ❌ | ❌ truncated |
+
+### What each one risks
+
+✅ is always the safe answer. ☠️ is the data-loss risk, not a missing feature.
+
+| | no `git` needed | your repo untouched | survives `git gc` | the store is bounded by | capture cost grows with |
+|---|:--:|:--:|:--:|---|---|
+| **dsh-filesnap** 0.2.0 | ✅ | ✅ | ✅ nothing of ours is in git | **reachability** — live while referenced | **nothing** — a bounded union, per turn |
+| [dsh-rewind](https://www.npmjs.com/package/dsh-rewind) 0.11.12 | ❌ creates one | ☠️ `git init`, `reset --hard` | ☠️ **no** — unreferenced stash objects | your repo's own `gc` | the tree |
+| [dsh-checkpoint-rewind](https://www.npmjs.com/package/dsh-checkpoint-rewind) 0.6.1 | ⚠️ copy fallback | ☠️ writes `.git/objects` | ☠️ **no** — unreferenced objects | 50 points + 512 MiB, per session | the tree |
+| [dsh-rewind-plugin](https://www.npmjs.com/package/dsh-rewind-plugin) 0.4.2 | ✅ | ✅ | ✅ | 100 anchor groups, per session | ☠️ **the session** — full copies, no dedup |
+| [@anionex/dsh-turn-rewind](https://www.npmjs.com/package/@anionex/dsh-turn-rewind) 0.1.2 | ❌ git worktree only | ✅ | ✅ | 50 points + 30 auto, per session | the tree |
+| [dsh-recall-plugin](https://www.npmjs.com/package/dsh-recall-plugin) 2.0.0 | ❌ needs the CLI | ✅ shadow repo | ✅ | ⚠️ nothing — it never prunes | the tree |
+| [@zoytown/dsh-rewind](https://www.npmjs.com/package/@zoytown/dsh-rewind) 0.1.0 | ❌ needs the CLI | ✅ shadow repo | ✅ | 30 days, 50 sessions per workspace | the tree |
+| [@flow2dream/dsh-msg-rewind](https://www.npmjs.com/package/@flow2dream/dsh-msg-rewind) 0.1.6 | ✅ | ✅ | — | — | — |
+
+**"Capture cost grows with" is the column people discover last and regret first.**
+`dsh-rewind-plugin` re-checks every file it has ever tracked at each message
+boundary and stores each backup as a whole-file copy, so both the per-turn scan
+and the disk grow with how long you have been talking. The git designs walk the
+worktree, so they grow with the tree. Here the tracked set is a union of three
+partitions, each bounded by something other than the size of the tree, and the
+declared set ages out on a rolling window — which is why 70,918 files cost 268 ms
+and why the second capture of this repository hashed nothing at all.
+
+Three more facts behind those grids, each checkable in the shipped package:
+
+- **Only this one follows the agent's edits outside the project directory.** A
+  git design is bounded by the worktree by construction: a file the agent edits
+  in `~/.config`, in a sibling checkout, or anywhere else is in nobody's tree, so
+  it cannot be snapshotted and cannot come back. Here the pre-image is recorded
+  at the moment of the write, wherever the path points — the edit-touched
+  partition is bounded by what the agent did, not by what is under the root.
+- **Files the agent created can survive its rewind:** "the snapshot does not
+  include untracked files". A rewind that leaves the turn's new files on disk is
+  not a rewind.
+- **`dsh-rewind-plugin`, the most-installed of these, cannot undo its own
+  rewind** — it says so. Masking in place leaves nothing to hand back to. Forking
+  is what makes `/redo` possible.
+
+### Size and speed
+
+| | snapshot engine | to install | capture, 70,918-file checkout |
+|---|---|---|---|
+| **dsh-filesnap** | **compiled Rust**, one static binary | 0.23 MB plugin + 4 MB engine, **and nothing else** | **268 ms**, measured, in this README |
+| the five git ones | JavaScript spawning the `git` CLI | 0.05–0.81 MB, **plus a `git` installation** | not published |
+| the two without git | JavaScript, inside your session's Node process | 0.37–1.15 MB | not published |
+
+**Every other plugin here snapshots in JavaScript.** They either hash and copy
+files in the same Node process that is running your session, or shell out to `git`
+once a turn. The work here is compiled: the bounded scan, the content hashing and
+the atomic restore are native code in a separate process, which is why a
+70,918-file checkout costs 268 ms and re-capturing this repository costs 8 ms.
+Nobody else publishes a number.
+
+The engine is the largest single artifact here and it is also the whole
+dependency: no runtime, no `git`, no storage stack to compose. `dsh-checkpoint-rewind`
+needs three more profile rows before one checkpoint exists.
+
+A diff view and per-file restore are the one thing the checkpoint pair has that
+this does not. Both are on the roadmap: every point is a content-addressed
+manifest, so a diff between two points is a query rather than a redesign.
+
+### Nothing is deleted for being old
+
+Every other plugin here bounds its store by age or by count, so the point you
+want can be pruned by points you never asked for — `@zoytown/dsh-rewind` says
+outright that its limit deletes a whole session at a time.
+
+Nothing here is reclaimed for being old. `delete` is the only thing that makes a
+point unreachable, `gc` collects only what is already orphaned and only after a
+grace window, and `doctor` clears what an interrupted operation left behind.
+Blobs are shared across every point that holds them, so keeping more points
+costs what changed between them, not a copy of the tree per point.
+
+**And you can ask what it holds.** `/rewind status` re-scans and answers the
+question nothing else answers — **which files in this project are not protected,
+and why**: too large, unreadable, not a regular file. It also reports the disk in
+use, split between this workspace's records and the shared blob store, and how
+far back each session here can go. It is read-only, so you can look before you
+decide.
+
+### The one thing it costs you
+
+The designs that reuse an existing event type, or keep their state outside the
+session log, uninstall without a trace. This one declares three session event
+types at load and cannot unwind that declaration without stranding the logs that
+hold them, so **uninstalling it leaves the sessions it captured in unreadable**.
+See [Known limitations](#known-limitations).
 
 ## Install
 
