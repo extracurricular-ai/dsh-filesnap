@@ -102,6 +102,35 @@ function failures(run: FilesnapRun): { path: string; error: string }[] {
  * Registered as `ctx.filesnap`. The command handlers and the browser half both
  * go through it, so the sequencing exists once.
  */
+/**
+ * Which preset a session actually runs: the last one it selected, or the one
+ * its header was created with.
+ *
+ * Six lines rather than an import, because the harness has moved this twice —
+ * it was `resolveSessionPreset` in `@deepseek-ai/dsh-agent-presets`, and is now
+ * an `agentPreset` projection. The rule behind both is the same and has not
+ * changed: a later selection wins, and the header is the floor. Reading the log
+ * directly is the one form that resolves against a harness on either side of
+ * that move, and this plugin's peer ranges admit both.
+ *
+ * @param source - the session to read.
+ * @returns the preset id, or undefined when the deployment composes none.
+ */
+function sessionPreset(source: Session): string | undefined {
+  for (let index = source.events.length - 1; index >= 0; index -= 1) {
+    // Widened before the comparison, not narrowed after it. `SessionEventMap`
+    // only carries `agent-preset/selected` when the presets package is in the
+    // compilation, and this plugin does not import it — a deployment that
+    // composes no presets should not have to. Declaring the type here instead
+    // would put a second owner on another package's event.
+    const event = source.events[index] as { type: string; data?: { agentPreset?: unknown } } | undefined
+    if (event?.type !== 'agent-preset/selected') continue
+    const selected = event.data?.agentPreset
+    if (typeof selected === 'string') return selected
+  }
+  return source.header.agentPreset
+}
+
 export class FilesnapRewind extends Service {
   /**
    * Cordis reads an array as the required set and holds the fiber PENDING until
@@ -808,8 +837,7 @@ export class FilesnapRewind extends Service {
   }> {
     const presets = this.ctx.get('agentPresets')
     if (presets === undefined) return {}
-    const { resolveSessionPreset } = await import('@deepseek-ai/dsh-agent-presets')
-    const resolved = await presets.resolve(resolveSessionPreset(source))
+    const resolved = await presets.resolve(sessionPreset(source))
     return {
       agentPreset: resolved.id,
       setup: async (agentCtx: Context) => void await presets.mount(agentCtx, resolved.id),

@@ -137,7 +137,13 @@ describe('the filesnap projection', () => {
 
       // Seeded from the row alone, with no events left to replay.
       const serialized = JSON.parse(JSON.stringify(checkpoint)) as typeof checkpoint
-      const restored = ctx.sessionProjections.restore(serialized, [], session.seq)
+      // `header` is the fourth argument as of the harness release that turned
+      // preset resolution into a projection: `init` now receives the header, so
+      // a restore has to hand it back. This plugin never calls `restore` — it
+      // registers a definition and the harness drives it — so the argument
+      // count is a fact about the harness this suite is linked against, not
+      // about what the plugin supports.
+      const restored = ctx.sessionProjections.restore(serialized, [], session.seq, session.header)
       const value = restored.snapshot.values.filesnap
       expect(value?.points).toEqual([
         {

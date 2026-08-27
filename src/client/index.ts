@@ -37,7 +37,12 @@
 // resolves against a harness from either side of the removal.
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
-// Type-only: pulls the ui-conversation SlotMap merge (the two strips).
+// Type-only: pulls the SlotRegistry service merge (ctx.slots).
+import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
+// Type-only: pulls the ui-chat SlotMap merge (the per-message action row).
+// Separate from ui-conversation since the harness split the chat surface out.
+import type {} from '@deepseek-ai/dsh-client-ui-chat/client'
+// Type-only: pulls the ui-conversation SlotMap merge (the session header strip).
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 // Type-only: pulls the locale plugin's Context merge (ctx.locale).
 import type {} from '@deepseek-ai/dsh-client-locale/client'

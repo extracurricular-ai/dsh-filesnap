@@ -18,6 +18,14 @@
  *
  * Pass a path, or set `DSH_HARNESS`, when the checkout is somewhere else.
  *
+ * **The checkout has to be recent.** This list follows the harness's package
+ * layout, which moves: `packages/client/runtime` was removed and the chat
+ * slots were split into `packages/client/ui-chat`. Building against an older
+ * checkout fails at the link, by design — the alternative is typechecking
+ * against declarations that no longer describe what a deployment runs. The
+ * *published* plugin is not affected: the imports that follow that split are
+ * type-only, and the slot names they reach are the same on either side.
+ *
  * Re-run it after any `npm install`: npm prunes what `package.json` does not
  * name, and these links are deliberately not named there.
  */
@@ -45,6 +53,8 @@ const PACKAGES = [
   // "the harness is not built" — a checkout that was built fine. A package
   // that goes away upstream should not read as a local mistake, so the check
   // below now separates the two.
+  'packages/client/ui-renderer',
+  'packages/client/ui-chat',
   'packages/client/ui-slots',
   'packages/client/ui-primitives',
   'packages/client/ui-conversation',
