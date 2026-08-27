@@ -1,6 +1,6 @@
 {
   "name": "dsh-filesnap",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "A blazing-fast rewind and redo plugin for DeepSeek Harness, powered by a 🦀 Rust core.",
   "type": "module",
   "main": "lib/index.js",
@@ -118,7 +118,7 @@
     "url": "https://github.com/extracurricular-ai/dsh-filesnap/issues"
   },
   "dependencies": {
-    "filesnap": "^0.3.0",
+    "filesnap": "^0.4.0",
     "zod": "^4.4.3"
   },
   "dsh": {
