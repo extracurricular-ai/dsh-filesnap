@@ -14,6 +14,24 @@
  * session being left, and a redo strips it from the session being returned to.
  * Nothing is hidden, so nothing can be stranded.
  *
+ * XXX(archive-when-reversible): offer archiving as well, by feature-detecting
+ * `unarchiveSession` on `ctx.workspaceRegistry` — present when a deployment
+ * installs one of the community archive-manager plugins, or if the harness
+ * ever ships it. Detection only: this plugin must not add the method itself.
+ *
+ * Two routes were considered and rejected for that:
+ *
+ *   - **Editing `storages/workspace.json` directly.** The registry holds the
+ *     whole domain state in memory and never re-reads it, so an outside edit is
+ *     invisible until restart and is then overwritten by the next registry
+ *     write, which flushes the stale in-memory copy back over it.
+ *   - **Driving the registry's own chain** (`enqueueOperation` + `setState`).
+ *     Correct at runtime, and worse than it looks: those are TypeScript
+ *     `private` members, so renaming or `#private`-ing them is ordinary
+ *     internal refactoring that would break this silently.
+ *
+ * The marking below needs neither, which is why it ships and they do not.
+ *
  * @module
  */
 
