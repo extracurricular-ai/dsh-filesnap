@@ -220,8 +220,7 @@ conversation, so it does not go through the thing being rewound.
 
 ## Compared with the other dsh rewind plugins
 
-**Everything a rewind has to do, only one of these does all of.** Read from each
-project's own documentation on 2026-08-27.
+**Everything a rewind has to do, only one of these does all of.**
 
 > [!CAUTION]
 > **Three of these can lose your work, and every claim here is verifiable in the
@@ -349,6 +348,10 @@ session log, uninstall without a trace. This one declares three session event
 types at load and cannot unwind that declaration without stranding the logs that
 hold them, so **uninstalling it leaves the sessions it captured in unreadable**.
 See [Known limitations](#known-limitations).
+
+*(Versions, claims and line numbers in this section were checked against the
+published packages on 2026-08-27. They are moving targets — check the current
+release before relying on a row.)*
 
 ## Install
 
