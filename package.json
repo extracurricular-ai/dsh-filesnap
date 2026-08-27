@@ -1,6 +1,6 @@
 {
   "name": "dsh-filesnap",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "Rewind and redo for DeepSeek Harness: put the workspace and the conversation back to the start of an earlier turn, without a repository and without touching your version control.",
   "type": "module",
   "main": "lib/index.js",
