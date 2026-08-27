@@ -26,6 +26,12 @@ jobs:
     # the environment — a required reviewer — stops a publish even if something
     # unwanted has reached the tag.
     environment: npm
+    # Set once for the job, not passed per step: `build:client` runs inside
+    # `prepublishOnly`, where an argument cannot reach it. Both scripts read
+    # this, so one mechanism covers every call — and the publish below cannot
+    # silently produce a package without its browser half.
+    env:
+      DSH_HARNESS: ${{ github.workspace }}/.harness
     permissions:
       # **A job-level `permissions:` block replaces the workflow-level one
       # rather than merging with it**, so `contents: read` has to be restated.
@@ -72,7 +78,7 @@ jobs:
       - run: npm ci
 
       - name: Link the harness
-        run: npm run harness:link -- "$GITHUB_WORKSPACE/.harness"
+        run: npm run harness:link
 
       # A tag that does not name the version in the manifest would publish
       # something nobody asked for, and there is no taking it back. Checked

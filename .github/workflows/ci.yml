@@ -27,6 +27,11 @@ jobs:
     # projects ship rather than with a fixture of them.
     name: engine and service tests
     runs-on: ubuntu-latest
+    # Set once for the job, not passed per step: `build:client` runs inside
+    # `prepublishOnly` too, where an argument cannot reach it. Both scripts read
+    # this, so one mechanism covers every call.
+    env:
+      DSH_HARNESS: ${{ github.workspace }}/.harness
     steps:
       - uses: actions/checkout@v4
       # Inside the workspace: `actions/checkout` refuses a path outside it,
@@ -47,7 +52,7 @@ jobs:
         working-directory: .harness
         run: pnpm install --ignore-scripts && pnpm run build
       - run: npm ci
-      - run: npm run harness:link -- "$GITHUB_WORKSPACE/.harness"
+      - run: npm run harness:link
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
