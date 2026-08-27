@@ -1,0 +1,12 @@
+{
+  "//": "The browser face. Separate from the host face because it compiles against a DOM lib and JSX, and because a client package's public surface is its ./client entrypoint rather than its root.",
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "lib": ["es2024", "dom", "dom.iterable"],
+    "jsx": "react-jsx",
+    "types": [],
+    "noEmit": true
+  },
+  "exclude": [],
+  "include": ["src/client/**/*", "src/css-modules.d.ts", "src/wire.ts"]
+}

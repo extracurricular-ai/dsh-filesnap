@@ -1,0 +1,13 @@
+{
+  "//": "Emit face for the browser half. Its output is the bundler's input, not a consumer's: the published artifact is lib/client.js, which the bundle produces from these files. The output lands in lib/types/ because the bundle's CSS loader maps an emitted module at <pkg>/lib/types/<rest> back to <pkg>/src/<rest> to find its stylesheet.",
+  "extends": "./tsconfig.client.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "declaration": true,
+    "declarationMap": false,
+    "sourceMap": false,
+    "rootDir": "src",
+    "outDir": "lib/types",
+    "declarationDir": "lib/types"
+  }
+}

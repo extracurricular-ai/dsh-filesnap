@@ -55,6 +55,27 @@ files an undo record in the session named by `--undo-for` and that has to be
 the session the user ends up standing in. Get the order wrong and `/redo`
 exists somewhere the user cannot reach.
 
+## The browser half
+
+Optional, and a separate artifact. `lib/client.js` adds a **Rewind** entry to
+the session header: it lists the points from a host-computed projection, and
+picking one does the same three steps in the order the web needs them.
+
+```
+sessions.fork(atSeq)        the deployment's own fork — composes the child's
+                            preset and attaches it to the workspace
+/rewind <point> --into <child>   the host puts the files back and files the
+                            undo record in that fork
+sessions.open(child)        the user lands where the files landed
+```
+
+The host plugin can fork by itself and does so for a headless run. In the web
+it must not: a second fork beside the deployment's correct one would leave the
+child out of the workspace it belongs to.
+
+Loading it needs the plugin in a web build's client composition; a deployment
+that wants only the commands loads the host half and ignores this.
+
 ## Commands
 
 | | |
@@ -62,6 +83,9 @@ exists somewhere the user cannot reach.
 | `/rewind` | list the points this session can return to |
 | `/rewind <turn>` | fork the conversation there and put the files back with it |
 | `/redo` | reverse the rewind that landed in this session |
+
+`/rewind <turn> --into <session>` files the undo record in a fork the caller
+already made, which is what the browser half passes.
 
 `/rewind` takes a turn number as listed, or a point id verbatim. There is no
 "go back three" — the engine refuses relative addressing on purpose, because a
@@ -148,6 +172,11 @@ sees.
 | `filesnap/rewound` | this session was rewound; the conversation continues in `child` |
 | `filesnap/redone` | a rewind was reversed here |
 
+They also drive a `filesnap` **session projection**, which is how the browser
+reads the point list without re-deriving it from a transcript it renders for
+other reasons. The projection registers through `ctx.inject`, so an assembly
+with no projection registry is unaffected.
+
 They live in the log rather than in a side table because a fork deep-clones the
 seed: a point recorded in the log travels into every child that inherits the
 turn it belongs to, so a freshly forked session can offer rewind points before
@@ -194,21 +223,43 @@ consumer resolves, and checking against `src` would typecheck the harness's own
 sources under this project's compiler settings rather than checking this
 plugin.
 
+`harness:link` also has to be re-run after any `npm install`: npm prunes what
+`package.json` does not name, and these links are deliberately not named there.
+
 The suite has three tiers. `npm run test:standalone` needs neither the harness
 nor the binary. The engine and service suites drive the real `filesnap`
 command and self-skip when none is built — set `FILESNAP_BIN`, or leave a
 `../filesnap` checkout with `cargo build --release -p filesnap-cli` run in it.
 
+Two build faces:
+
+```console
+$ npm run build          # the host half — plain tsc, no harness needed
+$ npm run build:client   # lib/client.js — needs the harness checkout
+```
+
+The browser artifact is the harness's own closure-factory format, produced by
+its tsdown preset. That preset is a repository file rather than a published
+entrypoint, and it resolves a package's externals by globbing the harness's
+`packages/` tree — so `build:client` stages this manifest there for the length
+of the build and removes it afterwards. Sources, config and output all stay
+here. It is not the imposition it looks like: the web application is itself
+built from the harness repository, so anyone assembling a web build that
+includes this plugin already has a checkout.
+
 ## Known limitations
 
-- **A `/rewind` from the web composer reports the new session rather than
-  opening it.** The host command registry returns text, so the plugin names the
-  fork and the user opens it. Passing `{ kind: 'into', session }` from a client
-  that has already forked is the path that avoids this.
+- **A `/rewind` typed into the web composer reports the new session rather than
+  opening it.** The host command registry returns text, so that path names the
+  fork and the user opens it. The header entry does not have this problem: it
+  forks and navigates itself.
 - **A self-performed fork inherits the parent's model route and preset, but not
   per-agent model *selection* or workspace attachment.** Those live in the
-  deployment's own fork path (`sessions.fork`), which `{ kind: 'into' }`
-  exists to defer to.
+  deployment's own fork path (`sessions.fork`), which `--into` exists to defer
+  to — so the headless fork is the one that carries this gap.
+- **The browser half is typecheck-verified and built, not browser-tested.** The
+  artifact is the shell's own format and the two faces compile against the
+  harness's declarations, but no test drives the rendered menu.
 - **A turn whose capture failed offers no rewind point.** The failure is on
   stderr; the point is absent rather than listed and refused on use.
 - **Coverage of shell-written files follows the scan.** A file a shell command

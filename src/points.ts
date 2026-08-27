@@ -24,7 +24,7 @@
  */
 
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
-import type { RewindPoint } from './types.ts'
+import type { RewindPoint, RewindRecord } from './wire.ts'
 
 /** How much of a user's opening message labels a point in a list. */
 const LABEL_MAX_CHARS = 72
@@ -43,20 +43,8 @@ export interface PointsState {
   readonly openTurn: number | null
   /** Seq the open turn started at, for the boundary one before it. */
   readonly openTurnStart: number
-  /**
-   * Where the last rewind out of this session went, when there was one.
-   * `| undefined` for the same JSON round-trip reason as {@link RewindPoint.label}.
-   */
-  readonly lastRewind?: {
-    /** The point the workspace was returned to. */
-    readonly point: string
-    /** The turn that point precedes. */
-    readonly turn: number
-    /** The session the conversation continues in. */
-    readonly child: string
-    /** Epoch ms the rewind was recorded. */
-    readonly at: number
-  } | undefined
+  /** Where the last rewind out of this session went, when there was one. */
+  readonly lastRewind?: RewindRecord | undefined
 }
 
 /**

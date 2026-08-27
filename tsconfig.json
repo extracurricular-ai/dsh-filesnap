@@ -20,5 +20,6 @@
     "types": ["node"],
     "noEmit": true
   },
-  "include": ["src/**/*.ts", "tests/**/*.ts", "vitest.config.ts"]
+  "include": ["src/**/*.ts", "tests/**/*.ts", "vitest.config.ts", "scripts/**/*.mjs"],
+  "exclude": ["src/client/**/*"]
 }

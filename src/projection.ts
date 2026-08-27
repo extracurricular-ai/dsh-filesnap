@@ -22,29 +22,19 @@ import { z } from 'zod'
 import type {} from '@deepseek-ai/dsh-session-projection'
 import { capturedPoints, initialPoints, reducePoints } from './points.ts'
 import type { PointsState } from './points.ts'
-import type { RewindPoint } from './types.ts'
+import type {} from './wire.ts'
 
-/** What a client reads under the `filesnap` key. */
-export interface FilesnapProjection {
-  /** The points this session can return to, oldest first. */
-  readonly points: readonly RewindPoint[]
-  /** Where the last rewind out of this session went, when there was one. */
-  readonly lastRewind?: {
-    readonly point: string
-    readonly turn: number
-    readonly child: string
-    readonly at: number
-  } | undefined
-}
+export type { FilesnapProjection } from './wire.ts'
 
 declare module '@deepseek-ai/dsh-session-projection/types' {
   interface SessionProjectionStateMap {
-    /** The reader state behind the `filesnap` client view. */
+    /**
+     * The reader state behind the `filesnap` client view. Host-only: the
+     * client-visible half of the pair is merged in `wire.ts`, which a browser
+     * program can import without dragging the host's `Context` merges in
+     * behind it.
+     */
     filesnap: PointsState
-  }
-  interface SessionProjectionMap {
-    /** Rewind points, and where the last rewind went. */
-    filesnap: FilesnapProjection
   }
 }
 

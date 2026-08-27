@@ -16,6 +16,9 @@
  */
 
 import type { SessionId } from '@deepseek-ai/dsh-session'
+import type { RewindPoint } from './wire.ts'
+
+export type { FilesnapProjection, RewindPoint, RewindRecord } from './wire.ts'
 
 declare module '@deepseek-ai/dsh-session/types' {
   interface SessionEventMap {
@@ -89,32 +92,6 @@ declare module '@deepseek-ai/dsh-session/types' {
       conflicts: string[]
     }
   }
-}
-
-/** One place the workspace and the conversation can both be returned to. */
-export interface RewindPoint {
-  /** The filesnap turn id — what `restore` is addressed by. */
-  readonly point: string
-  /** The harness turn this point precedes. */
-  readonly turn: number
-  /**
-   * Inclusive source event seq a fork must cut through to land the
-   * conversation where the files land: the event before this turn opened.
-   */
-  readonly boundary: number
-  /** Epoch ms the turn opened. */
-  readonly at: number
-  /**
-   * First line of the user message that opened the turn, trimmed for a list —
-   * absent for a turn that entered no user message, or one whose message is
-   * not text.
-   *
-   * `| undefined` because this value round-trips through JSON, both to the
-   * browser and through the projection cache. Producers still omit the key
-   * rather than writing `undefined` into it: a serialized `undefined` is a
-   * key that vanishes, which is not the value that went in.
-   */
-  readonly label?: string | undefined
 }
 
 /** What a completed rewind did. */

@@ -39,7 +39,7 @@ export { parseRewind } from './commands.ts'
 export type { RewindCommand } from './commands.ts'
 export { capturedPoints, foldPoints, initialPoints, reconcile, reducePoints, selectPoint } from './points.ts'
 export type { PointsState } from './points.ts'
-export type { FilesnapProjection } from './projection.ts'
+export type { FilesnapProjection, RewindRecord } from './wire.ts'
 export type {
   RedoOutcome,
   RewindOutcome,

@@ -36,7 +36,18 @@ const PACKAGES = [
   'packages/interaction/commands',
   'packages/preset/agent-presets',
   'packages/session/session-projection',
+  // The browser half's inputs. Their `lib/types/client` declarations are what
+  // a client bundle is checked against; the bundle itself is built by the
+  // harness's own preset (see tsdown.config.ts).
+  'packages/client/runtime',
+  'packages/client/ui-slots',
+  'packages/client/ui-primitives',
+  'packages/client/ui-conversation',
+  'packages/client/locale',
 ]
+
+/** Third-party packages the browser half compiles against, taken from the harness's install. */
+const SHELL = ['react', '@types/react']
 
 const harness = resolve(process.argv[2] ?? process.env.DSH_HARNESS ?? '../deepseek-harness')
 
@@ -69,6 +80,32 @@ for (const dir of PACKAGES) {
   rmSync(target, { recursive: true, force: true })
   symlinkSync(relative(dirname(target), source), target, 'dir')
   console.log(`  ${name} -> ${dir}`)
+}
+
+// React and its types come from the harness's own install rather than this
+// package's: the web shell seeds React into the module table, so a browser
+// half that carried its own copy would compile against one React and run
+// against another.
+for (const name of SHELL) {
+  // pnpm links a package into the node_modules of whichever workspace member
+  // depends on it, not into the root, so the client packages' own directories
+  // are where these actually resolve.
+  const candidates = [
+    resolve(harness, 'node_modules', name),
+    resolve(harness, 'packages/client/ui-slots/node_modules', name),
+    resolve(harness, 'packages/client/ui-primitives/node_modules', name),
+    resolve(harness, 'packages/client/runtime/node_modules', name),
+  ]
+  const source = candidates.find(path => existsSync(path))
+  if (source === undefined) {
+    console.warn(`  (skipped ${name}: not installed in the harness)`)
+    continue
+  }
+  const target = resolve(root, name)
+  mkdirSync(dirname(target), { recursive: true })
+  rmSync(target, { recursive: true, force: true })
+  symlinkSync(relative(dirname(target), source), target, 'dir')
+  console.log(`  ${name} -> node_modules/${name}`)
 }
 
 console.log(`\nlinked ${String(PACKAGES.length)} packages from ${harness}`)

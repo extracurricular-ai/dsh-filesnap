@@ -10,10 +10,14 @@
       "types": "./lib/types/index.d.ts",
       "default": "./lib/index.js"
     },
+    "./client": {
+      "types": "./lib/types/client/index.d.ts",
+      "default": "./lib/client.js"
+    },
     "./package.json": "./package.json"
   },
   "files": [
-    "lib/**/*.js",
+    "lib/*.js",
     "lib/types/**/*.d.ts",
     "README.md",
     "LICENSE"
@@ -34,23 +38,28 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
-    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.client.json --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:standalone": "vitest run tests/ids.spec.ts tests/config.spec.ts tests/cli.spec.ts tests/points.spec.ts",
-    "harness:link": "node scripts/link-harness.mjs"
+    "harness:link": "node scripts/link-harness.mjs",
+    "build:client": "node scripts/build-client.mjs"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": ">=4",
     "@deepseek-ai/dsh-agent": ">=0.1.0-rc.6",
+    "@deepseek-ai/dsh-agent-presets": ">=0.0.1-rc.1",
     "@deepseek-ai/dsh-commands": ">=0.0.1-rc.1",
     "@deepseek-ai/dsh-fs": ">=0.0.1-rc.1",
     "@deepseek-ai/dsh-llm": ">=0.0.1-rc.1",
     "@deepseek-ai/dsh-session": ">=0.0.1-rc.1",
-    "@deepseek-ai/dsh-subprocess": ">=0.0.1-rc.1",
-    "@deepseek-ai/dsh-session-projection": ">=0.0.1-rc.1"
+    "@deepseek-ai/dsh-session-projection": ">=0.0.1-rc.1",
+    "@deepseek-ai/dsh-subprocess": ">=0.0.1-rc.1"
   },
   "peerDependenciesMeta": {
+    "@deepseek-ai/dsh-agent-presets": {
+      "optional": true
+    },
     "@deepseek-ai/dsh-commands": {
       "optional": true
     },
@@ -76,5 +85,15 @@
   },
   "dependencies": {
     "zod": "^4.4.3"
+  },
+  "dsh": {
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-client-runtime",
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-client-ui-conversation"
+      ],
+      "platform": "web"
+    }
   }
 }
