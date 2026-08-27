@@ -5,6 +5,8 @@
 [![licence](https://img.shields.io/npm/l/dsh-filesnap?color=1f6feb)](LICENSE)
 [![engine: Rust](https://img.shields.io/badge/engine-Rust-b7410e?logo=rust&logoColor=white)](https://github.com/extracurricular-ai/filesnap)
 [![git not required](https://img.shields.io/badge/git-not%20required-2ea44f)](#每一个各自的风险)
+[![PRs welcome](https://img.shields.io/badge/PRs-welcome-2ea44f)](CONTRIBUTING.zh.md)
+[![Discussions](https://img.shields.io/badge/discussions-join-5865f2?logo=github&logoColor=white)](https://github.com/extracurricular-ai/dsh-filesnap/discussions)
 
 [English](README.md) | 中文
 
@@ -392,6 +394,20 @@ npm install -g codex-rewind
 另外还有一个[讲解视频](https://youtu.be/OpJI8NQ-mvY),大部分篇幅在讲**为什么 git
 不适合做这件事的地基**、以及这套方法到哪里为止 —— 是两个项目背后的推理,不是功能
 演示。
+
+## 参与贡献
+
+**欢迎提 issue 和 PR,而且两者都不需要打磨得很完整。** 一句话加一段堆栈的 bug 报告,比那份始终没写出来的详尽报告有价值得多。
+
+| | |
+|---|---|
+| [**Discussions**](https://github.com/extracurricular-ai/dsh-filesnap/discussions) | 提问、想法、"这样是不是本来就该这样"、展示你做的东西 |
+| [**Issues**](https://github.com/extracurricular-ai/dsh-filesnap/issues) | 有东西坏了,或者某个具体的地方该改 |
+| [**Pull requests**](https://github.com/extracurricular-ai/dsh-filesnap/pulls) | 你已经把它修好了 |
+
+选错了没有任何代价 —— 我们会挪。用中文或英文都行,哪个顺手用哪个。
+
+[CONTRIBUTING.zh.md](CONTRIBUTING.zh.md) 里有本地开发的装配、四层测试,以及动手之前最值得知道的那一件事 —— 你的改动属于两个仓库里的哪一个。[安全问题请走私有渠道](SECURITY.md),不要开公开 issue。所有参与者都受[行为准则](CODE_OF_CONDUCT.md)约束。
 
 ## 许可
 

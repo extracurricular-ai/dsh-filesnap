@@ -1,0 +1,36 @@
+name: Idea or change
+description: Something specific should work differently, or does not exist yet.
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Still thinking it through? [Discussions](https://github.com/extracurricular-ai/dsh-filesnap/discussions)
+        is the lower-ceremony place for that — no template, no labels.
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to do
+      description: The situation, rather than the solution. It often changes the answer.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What you have in mind
+      description: Optional. A rough shape is enough.
+    validations:
+      required: false
+  - type: checkboxes
+    id: where
+    attributes:
+      label: Where it probably belongs
+      description: >
+        A guess is fine and being wrong costs nothing — we will route it. This
+        repository decides *when* a snapshot is taken and what a rewind point
+        means; [filesnap](https://github.com/extracurricular-ai/filesnap) decides
+        what a snapshot covers and how files move.
+      options:
+        - label: Here — commands, the browser half, when a point is captured, how a rewind is sequenced
+        - label: filesnap — what is covered, how it is stored or restored, the scan bounds, the CLI
+        - label: Not sure

@@ -1,0 +1,11 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Questions, ideas, and showing what you built
+    url: https://github.com/extracurricular-ai/dsh-filesnap/discussions
+    about: Not sure it is a bug? Ask in Discussions — no template, no ceremony.
+  - name: Something wrong in the engine itself
+    url: https://github.com/extracurricular-ai/filesnap/issues
+    about: Snapshotting, restoring, scan bounds and the store format live in filesnap.
+  - name: Report a vulnerability privately
+    url: https://github.com/extracurricular-ai/dsh-filesnap/security/advisories/new
+    about: Please do not file security issues as public issues.

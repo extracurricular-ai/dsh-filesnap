@@ -5,6 +5,8 @@
 [![licence](https://img.shields.io/npm/l/dsh-filesnap?color=1f6feb)](LICENSE)
 [![engine: Rust](https://img.shields.io/badge/engine-Rust-b7410e?logo=rust&logoColor=white)](https://github.com/extracurricular-ai/filesnap)
 [![git not required](https://img.shields.io/badge/git-not%20required-2ea44f)](#what-each-one-risks)
+[![PRs welcome](https://img.shields.io/badge/PRs-welcome-2ea44f)](CONTRIBUTING.md)
+[![Discussions](https://img.shields.io/badge/discussions-join-5865f2?logo=github&logoColor=white)](https://github.com/extracurricular-ai/dsh-filesnap/discussions)
 
 English | [中文](README.zh.md)
 
@@ -651,6 +653,26 @@ npm install -g codex-rewind
 There is also a [walkthrough](https://youtu.be/OpJI8NQ-mvY) that spends most of
 its length on why git is the wrong foundation for this and where the approach
 stops — the reasoning behind both projects, not a feature tour.
+
+## Contributing
+
+**Issues and pull requests are welcome, and neither has to be polished.** A bug
+report that is one sentence and a stack trace is worth more than the thorough one
+that never got written.
+
+| | |
+|---|---|
+| [**Discussions**](https://github.com/extracurricular-ai/dsh-filesnap/discussions) | questions, ideas, "is this supposed to work like this", showing what you built |
+| [**Issues**](https://github.com/extracurricular-ai/dsh-filesnap/issues) | something is broken, or something specific should change |
+| [**Pull requests**](https://github.com/extracurricular-ai/dsh-filesnap/pulls) | you already fixed it |
+
+Picking the wrong one costs nothing — we will move it. Write in English or
+Chinese, whichever is easier: 中文提 issue 完全没问题。
+
+[CONTRIBUTING.md](CONTRIBUTING.md) has the setup, the four test tiers, and the
+one thing worth knowing before you start — which of the two repositories your
+change belongs in. [Security issues go privately](SECURITY.md), never as a public
+issue. Everyone taking part is covered by the [Code of Conduct](CODE_OF_CONDUCT.md).
 
 ## Licence
 

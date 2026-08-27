@@ -1,0 +1,41 @@
+name: Bug report
+description: Something is broken — a rewind that did not happen, a file that came back wrong, a crash.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **If files were lost or came back wrong, say so in the first line.** That
+        one we want to see immediately, and a half-filled report is fine.
+
+        Write in English or Chinese — 中文完全没问题。
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, what you got instead.
+    validations:
+      required: true
+  - type: textarea
+    id: versions
+    attributes:
+      label: Versions
+      description: One command each. Paste whatever you can get.
+      value: |
+        npm ls dsh-filesnap →
+        filesnap --version  →
+        harness build       →
+      render: text
+    validations:
+      required: false
+  - type: textarea
+    id: engine
+    attributes:
+      label: What the engine recorded
+      description: >
+        `filesnap log --session <session-id>` shows the points it holds;
+        `filesnap status` shows what it does not protect here, and why. Both are
+        optional, and both usually contain the answer.
+      render: text
+    validations:
+      required: false
