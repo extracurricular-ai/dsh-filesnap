@@ -227,6 +227,22 @@ export const FILESNAP_EVENT_TYPES = ['filesnap/point', 'filesnap/rewound', 'file
  * `append` that can mark an event ignorable.
  */
 export function declareEventTypes(): void {
+  // FIXME(upstream-event-registration): this mutates another package's
+  // exported constant. `KNOWN_SESSION_EVENT_TYPES` is typed `ReadonlySet` and
+  // is a plain, unfrozen `Set` at runtime, so the cast below is the only thing
+  // standing between this plugin and a harness internal — there is no sanctioned
+  // interface here, and the harness could freeze the set or rebuild it from a
+  // generator at any time without warning.
+  //
+  // A release should not ship this quietly. It needs one of two upstream
+  // changes in deepseek-harness, and the second is the better one:
+  //
+  //   1. a registration surface for out-of-repo session event types — the
+  //      `known-event-types.ts` comment already names this as deferred work; or
+  //   2. an `append` that can set the envelope's `ignorable: true`. Better,
+  //      because an ignorable event is SKIPPED by a reader that does not know
+  //      it rather than refused — which would also make uninstalling this
+  //      plugin harmless, where today it strands every log the plugin wrote.
   const known = KNOWN_SESSION_EVENT_TYPES as Set<string>
   for (const type of FILESNAP_EVENT_TYPES) known.add(type)
 }
