@@ -1,7 +1,7 @@
 {
   "name": "dsh-filesnap",
   "version": "0.2.1",
-  "description": "A blazing-fast rewind and redo plugin for DeepSeek Harness, powered by a 🦀 Rust core.",
+  "description": "Rewind DeepSeek Harness conversations and workspace files together without touching Git, with undoable restores powered by 🦀 Rust.",
   "type": "module",
   "main": "lib/index.js",
   "types": "lib/types/index.d.ts",
@@ -21,9 +21,11 @@
     "lib/types/**/*.d.ts",
     "README.md",
     "README.zh.md",
+    "docs/*.md",
     "LICENSE"
   ],
   "license": "Apache-2.0",
+  "author": "Extracurricular AI",
   "keywords": [
     "dsh",
     "dsh-plugin",
@@ -60,9 +62,10 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:standalone": "vitest run tests/ids.spec.ts tests/config.spec.ts tests/cli.spec.ts tests/points.spec.ts",
+    "check:docs": "node scripts/check-docs.mjs",
     "harness:link": "node scripts/link-harness.mjs",
     "build:client": "node scripts/build-client.mjs",
-    "prepublishOnly": "npm run typecheck && npm test && npm run build && npm run build:client"
+    "prepublishOnly": "npm run check:docs && npm run typecheck && npm test && npm run build && npm run build:client"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": ">=4",

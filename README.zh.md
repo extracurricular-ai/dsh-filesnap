@@ -1,270 +1,67 @@
-# dsh-filesnap
+# dsh-filesnap — 同步回退 DSH 对话与文件
 
 [![npm](https://img.shields.io/npm/v/dsh-filesnap?color=cb3837&logo=npm&logoColor=white)](https://www.npmjs.com/package/dsh-filesnap)
 [![CI](https://github.com/extracurricular-ai/dsh-filesnap/actions/workflows/ci.yml/badge.svg)](https://github.com/extracurricular-ai/dsh-filesnap/actions/workflows/ci.yml)
-[![licence](https://img.shields.io/npm/l/dsh-filesnap?color=1f6feb)](LICENSE)
-[![engine: Rust](https://img.shields.io/badge/engine-Rust-b7410e?logo=rust&logoColor=white)](https://github.com/extracurricular-ai/filesnap)
-[![git not required](https://img.shields.io/badge/git-not%20required-2ea44f)](#每一个各自的风险)
-[![PRs welcome](https://img.shields.io/badge/PRs-welcome-2ea44f)](CONTRIBUTING.zh.md)
-[![Discussions](https://img.shields.io/badge/discussions-join-5865f2?logo=github&logoColor=white)](https://github.com/extracurricular-ai/dsh-filesnap/discussions)
+[![许可证](https://img.shields.io/npm/l/dsh-filesnap?color=1f6feb)](LICENSE)
+[![powered by 🦀 Rust](https://img.shields.io/badge/powered%20by-%F0%9F%A6%80%20Rust-b7410e?logo=rust&logoColor=white)](https://github.com/extracurricular-ai/filesnap)
+[![无需 Git](https://img.shields.io/badge/git-not%20required-2ea44f)](#为什么选择-dsh-filesnap)
 
 [English](README.md) | 中文
 
-一个快得离谱的 rewind / redo 插件,给 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness),核心由 **🦀 Rust** 实现。
+为 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)
+同步回退对话与工作区文件，不碰 Git。每次回退都发生在一个新的 fork 中，因此改变主意时
+还可以用 `/redo` 回去。
 
-回到某一轮开始时的状态 —— **对话和它改过的文件一起回去**。在从没 `git init` 过的项目里能用,在用着 git 的项目里也能用:你的 commit、stash、工作区状态一概不动,也不会往你的仓库里存任何东西。
+![dsh-filesnap：对话与工作区一起回退](assets/social-preview.png)
 
 ```console
-> /rewind
-Rewind points — the workspace as it stood before each turn:
-
-  turn  when                 opened by
-     1  2026-08-27 09:12:04  给上传接口加限流
-     2  2026-08-27 09:18:41  改成按租户维度
-     3  2026-08-27 09:31:10  再把租户查询缓存起来
-
-Rewind with /rewind <turn>. The conversation forks at that point and the files go back with it.
-
 > /rewind 2
-Rewound to turn 2 (改成按租户维度).
+Rewound to turn 2 (把限流改成按租户维度).
 Files: 7 written, 1 deleted.
 
 The conversation continues in session-9f3c1a04-….
 Run /redo there to reverse this rewind.
 ```
 
-## 引擎是 [filesnap](https://github.com/extracurricular-ai/filesnap)
+## 快速开始
 
-**真正吃重的逻辑不在这个仓库里。** 快照和还原由 [filesnap](https://github.com/extracurricular-ai/filesnap) 负责 —— 一个用 Rust 写的内容寻址存储,把目录还原成它先前某一刻的样子。有界扫描、内容寻址、原子还原、存储格式,全都在那边;想知道文件到底是怎么动的,该读的是那个仓库。
+### 环境要求
 
-它是一个 4 MB 的静态二进制,不需要安装任何运行时;每轮跑一次,而它前面是一次以秒计的模型请求:
+- 带有 `web` 或 `headless` profile 的 DeepSeek Harness
+- Node.js `^22.19` 或 `>=24`
+- x64 或 arm64 架构的 Linux、macOS 或 Windows
 
-| | 捕获的文件数 | 首次捕获 | 之后每次 |
-|---|---|---|---|
-| 本仓库 | 84 | 20 ms | **8 ms** |
-| harness 主仓 | 磁盘上 70,918 个,捕获 7,995 个 | 1.75 s | **268 ms** |
+原生 [filesnap](https://github.com/extracurricular-ai/filesnap) 二进制会随插件
+一起安装，不需要另装 Rust、Git 或其他运行时。
 
-第二列是**有界扫描**:一次快照覆盖的是"这一轮有可能改到"的范围,而不是根目录下的一切 —— 所以 7 万个文件的 checkout 不会付出 7 万个文件的代价。最后一列是**内容寻址**:本仓库的第二次捕获一个文件都没有重新哈希,84 个全部复用 —— 十轮里只改一个文件,存储代价就是一个文件,而不是十份拷贝。
+> [!IMPORTANT]
+> dsh 目前没有为仓库外插件提供正式的事件类型注册接口，因此 dsh-filesnap 会在加载时
+> 注册自己的 session 事件。**如果卸载插件，它捕获过的会话将暂时无法打开，重新安装后
+> 即可恢复访问。** 会话数据仍完整保留在磁盘上。详见
+> [架构限制](docs/architecture.zh.md#上游事件注册缺口)。
 
-*(在本机用 `filesnap capture` 实测,page cache 热态。你的数字会不一样,但形状是一样的。)*
-
-本包是 harness 这一半:决定**什么时候**快照、一个回退点在对话里意味着什么,以及一次回退的两半按什么顺序发生。
-
-### 给别的 agent 用
-
-**引擎不知道自己的宿主是谁。** 这一点写在它自己的文档里:它只接受不透明的字符串 id 和绝对路径,从不读写你的 git 状态,一个从没 `git init` 过的目录同样是一等公民。它里面没有任何一处知道 dsh 的存在。这是一条设计承诺,不是巧合 —— 也正是它能被搬到别的 agent 上的原因。
-
-两条路:
-
-- **Rust** —— `cargo add filesnap`。`capture`、`restore`、`scan_report` 以及存储类型就是公开 API。
-- **其他任何语言** —— 直接驱动那个二进制。每条命令都往 stdout 写带版本号的 JSON Lines,给人看的文字一律走 stderr,所以整个集成就是"起个子进程 + 按行解析"。npm 包只发二进制、不带 JS API,因为这本来就是**预期路径**,不是退路。
-
-**这个仓库就是第二条路的 worked example,而且代价是可量的。** [`src/cli.ts`](https://github.com/extracurricular-ai/dsh-filesnap/blob/main/src/cli.ts) —— 116 行(不含注释)—— 就是全部的引擎接口:起进程、解析 JSONL、映射退出码。那个文件里没有一行是 dsh 专有的。抄走就行。
-
-**不是** 116 行的,是这个仓库里另外约 1,100 行 —— 动手之前,这部分才是值得先看明白的。那些行决定的是:哪一轮值得捕获;当对话可以 fork 之后,一个回退点还意味着什么;对话和文件按什么顺序落地,才能让中间崩溃仍然可恢复;以及从父会话继承来的点该怎么处理。**filesnap 刻意不替你做这些决定** —— 它们每个 agent 都不一样,而一个靠猜的库会以你无法覆盖的方式猜错。
-
-所以这个推荐是窄的,而我们认为窄了反而更实在:filesnap 不会给你一个 rewind 功能。**它把"快照与还原"这一半变成一百来行就能解决的问题,好让你的力气花在真正属于你的 agent 的那一半上。**
-
-[crates.io](https://crates.io/crates/filesnap) ·
-[docs.rs](https://docs.rs/filesnap) ·
-[npm](https://www.npmjs.com/package/filesnap) ·
-[github](https://github.com/extracurricular-ai/filesnap)
-
-> **安装前请先知道这一点:** 插件把回退点记录为 session 事件,而 harness 没有为仓库外的插件提供声明事件类型的正式接口 —— 所以它在加载时通过修改一个 harness 常量来声明。这能工作,但有一个用户可见的后果值得先说清楚:**卸载插件后,被它抓过快照的对话会打不开**,因为读取端会拒绝一个含有未知类型的日志。磁盘上的数据完好无损;重新安装即可恢复访问。详见[已知限制](#已知限制)。
-
-## 它做什么
-
-**每轮抓一次快照。** 在 `agent/pre-step` 上,早于模型请求、也早于任何工具运行时,对工作区拍快照并把这个点记进 session 日志。这个抓取是被 await 的,所以第一次编辑落地时,快照不会处于"抓了一半"的状态。
-
-**在编辑发生前记录 pre-image。** `fs/write-intent` 和 `fs/edit-intent` 在 provider 真正改动之前触发 —— 那是文件旧内容还存在的最后一刻。插件只报路径,由 filesnap 自己去读,所以存下来的 pre-image 基于**观察**而不是基于插件的**声称**。
-
-这两个事件是**单槽决策 waterfall**,而部署自带的策略会占住那个槽且不往下委托。所以这两个监听器用 `prepend` 注册 —— 这么做安全的前提恰恰是它们不做任何决定:只记录,然后原样把决定权交出去,策略依旧拥有最终结果。如果按默认追加注册,它们**根本不会执行** —— 在 `tests/wiring.spec.ts` 补上"先挂一个不委托的决策者"(也就是 profile patch 层实际产生的顺序)这个用例之前,情况正是如此。
-
-这些挂载点与具体工具无关。覆盖范围跟随 `ctx.fs`,而不是某个工具名单 —— 所以一个本插件从没听说过的工具,只要它通过这个 seam 写文件,就立刻受到保护。
-
-**回退两半,而且只有一个顺序是对的。** 一次回退先 fork 对话,再把文件恢复**进那个 fork**。因为 filesnap 会把撤销记录归档到 `--undo-for` 指定的会话里,而那必须是用户最终所处的会话。顺序搞反,`/redo` 就存在于一个用户够不着的地方。
-
-## 浏览器半边
-
-可选,是一个独立产物。`lib/client.js` 提供两样东西,而这个拆分本身就是设计:
-
-- **每一轮自己那条消息按钮排里的回退控件**,和复制、分支并排。转录本身**就是**回退点的列表(一轮一个),所以控件是收尾那条 assistant 气泡下的一个图标,tooltip 说明这次快照覆盖了什么。没有再弹一个面板重复那张列表。
-- **header 里两个会话级控件**:撤销落在此处的回退(只有真有回退时才渲染),以及询问引擎当前存了什么。status 的回答落在对话里 —— 长列表本来就该待在那儿。
-
-选中某一轮后,按 web 需要的顺序执行三步:
-
-```
-sessions.fork(atSeq)             部署自己的 fork —— 会组合子会话的 preset
-                                 并把它挂进 workspace
-/rewind <point> --into <child>   host 把文件放回去,并把撤销记录归档进那个 fork
-sessions.open(child)             用户落在文件所落之处
-```
-
-host 插件自己也能 fork,headless 场景就是这么做的。但在 web 里不能:在部署那个正确的 fork 之外再建一个,会让子会话没被挂进它应属的 workspace。
-
-**它和 host 半边挂在同一行上。** web shell 会扫描 host Loader 已挂载的每个条目、解析各自的 `package.json`,凡是声明了 `dsh.client` 的就把它 `exports["./client"]` 指向的文件提供出去 —— 所以挂载 host 半边的那一行 `- id: filesnap`,同时也把 `lib/client.js` 放到了 `/plugins/dsh-filesnap/client.js`。不需要往 web 构建里加任何东西,也不需要改静态模块表。
-
-前提是 `npm run build:client` 跑过。没跑的话,shell 启动时会点名告诉你:
-
-```
-client-modules: client bundle not found; run `pnpm run build` before launch:
-  package: dsh-filesnap
-  path: …/lib/client.js
-```
-
-只想要命令的部署,构建 host 半边、永远不跑 `build:client` 即可 —— 那一行照常工作,只是没有浏览器入口。
-
-## 命令
-
-| | |
-|---|---|
-| `/rewind` | 列出本会话可以返回的点 |
-| `/rewind <turn>` | 在那里 fork 对话,并把文件一起放回去 |
-| `/redo` | 撤销落在本会话的回退,并交还给它 fork 自的那个对话 |
-| `/rewind status` | 这里存了什么,以及哪些文件**没有**被保护 |
-
-`/rewind status` 会重新扫描目录树,而不是读某次快照存下来的东西 —— 因为这个问题问的是项目**当下**的样子。这也是为什么没有任何地方每轮跑它:它的代价和一次快照相当。相比之下每轮的覆盖计数是免费的 —— 快照本来就报告了它们,于是它们搭日志的车,并显示在回退控件的 tooltip 里。
-
-`/rewind <turn> --into <session>` 会把撤销记录归档进调用方**已经建好**的 fork,浏览器半边传的就是这个。
-
-`/rewind` 接受列表里显示的轮次编号,或者点 id 原文。**没有**"往回三步"这种写法 —— 引擎刻意拒绝相对寻址,因为恢复操作会覆盖你的文件,而相对索引差一位既容易犯又容易漏掉。对着一张你正在看的列表数,和对着一个你以为的索引数,不是一回事。
-
-两个命令都不经过模型轮次。回退是你**对**这段对话做的事,所以它不该经手被回退的那个东西。
-
-## 和其他 dsh rewind 插件的对比
-
-**一次回退该做的事,这里只有一个全做到了。**
-
-> [!CAUTION]
-> **其中三个会让你丢东西,而且下面每一句都能在它们发布出去的包里核到。**
->
-> 1. **`git gc` 会删掉你的回退点。** `dsh-rewind` 和 `dsh-checkpoint-rewind` 把唯一的快照放在没有任何引用的 git 对象里:`dsh-checkpoint-rewind` 0.6.1 整个包里找不到一处 `update-ref`,而 `git stash create` 也不写 stash reflog。无引用对象正是 `git gc` 要清的东西 —— 过了 `gc.pruneExpire` 自动清,`git gc --prune=now` 立刻清。你整理一下自己的仓库,安全网就没了,而且不会有任何提示。
-> 2. **一次恢复会写坏每一个二进制文件。** `dsh-rewind-plugin` 0.4.2 用 `readFile(path, "utf8")` 存 pre-image,用 `writeFile(path, content, "utf8")` 还原 —— `lib/index.js:207` 和 `:607`,整个包里没有 `Buffer`、没有 base64、没有任何二进制判定。凡是不合法的 UTF-8 字节,回来的时候都是 `U+FFFD`。图片、PDF、数据库都活不过它的一次回退。
-> 3. **一次回退会扔掉 agent 根本没碰过的工作。** `dsh-rewind` 用 `git reset --hard` 做恢复,而它自己的限制一节写着这覆盖"整个仓库工作树……包括在 DSH 工具之外做出的改动" —— 你没提交的手改会一起没,你的分支指针也会移动。
->
-> 这些都不是"别用回退"的理由。它们是"快照存储不该是你的版本控制"的理由。
-
-### 一次回退该做的事
-
-| | 引擎 | 文件 | 对话 | 撤销回退 | shell 写的 | 二进制文件 | `git` 忽略的 | **项目目录外** | 原对话完整 |
-|---|:--:|:--:|:--:|:--:|:--:|:--:|:--:|:--:|:--:|
-| **dsh-filesnap** 0.2.0 | **🦀 Rust** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | **✅** | ✅ |
-| [dsh-rewind](https://www.npmjs.com/package/dsh-rewind) 0.11.12 | JS | ✅ | ✅ | ⚠️ 只到最近一次 | ✅ | ✅ | ❌ | ❌ | ❌ 被遮蔽 |
-| [dsh-checkpoint-rewind](https://www.npmjs.com/package/dsh-checkpoint-rewind) 0.6.1 | JS | ✅ | ✅ | ⚠️ 靠守护点 | ✅ | ✅ | ⚠️ | ❌ | ✅ |
-| [dsh-rewind-plugin](https://www.npmjs.com/package/dsh-rewind-plugin) 0.4.2 | JS | ✅ | ✅ | ❌ | ❌ | ☠️ | ✅ | ⚠️ | ❌ 被遮蔽 |
-| [@anionex/dsh-turn-rewind](https://www.npmjs.com/package/@anionex/dsh-turn-rewind) 0.1.2 | JS | ✅ | ⚠️ 可选 | ⚠️ 走 API | ✅ | ✅ | ❌ | ❌ | ✅ |
-| [dsh-recall-plugin](https://www.npmjs.com/package/dsh-recall-plugin) 2.0.0 | JS | ✅ | ✅ | ❌ | ✅ | ✅ | ⚠️ | ❌ | ⚠️ 被归档 |
-| [@zoytown/dsh-rewind](https://www.npmjs.com/package/@zoytown/dsh-rewind) 0.1.0 | JS | ✅ | ❌ | ✅ 只有文件 | ✅ | ✅ | ❌ | ❌ | ✅ |
-| [@flow2dream/dsh-msg-rewind](https://www.npmjs.com/package/@flow2dream/dsh-msg-rewind) 0.1.6 | JS | ❌ | ✅ | ❌ | ❌ | —— | ❌ | ❌ | ❌ 被截断 |
-
-### 每一个各自的风险
-
-✅ 永远是安全的那一侧。☠️ 是数据丢失风险,不是"少个功能"。
-
-| | 不需要 `git` | 不写你的仓库 | 扛得住 `git gc` | 存储的边界是什么 | 捕获代价随什么增长 |
-|---|:--:|:--:|:--:|---|---|
-| **dsh-filesnap** 0.2.0 | ✅ | ✅ | ✅ 我们没有任何东西在 git 里 | **可达性** —— 有引用就活着 | **不随任何东西增长** —— 每轮一次有界并集 |
-| [dsh-rewind](https://www.npmjs.com/package/dsh-rewind) 0.11.12 | ❌ 没有就替你建 | ☠️ `git init`、`reset --hard` | ☠️ **扛不住** —— 无引用的 stash 对象 | 你自己仓库的 `gc` | 目录树 |
-| [dsh-checkpoint-rewind](https://www.npmjs.com/package/dsh-checkpoint-rewind) 0.6.1 | ⚠️ 有 copy 降级 | ☠️ 写 `.git/objects` | ☠️ **扛不住** —— 无引用对象 | 每会话 50 个点 + 512 MiB | 目录树 |
-| [dsh-rewind-plugin](https://www.npmjs.com/package/dsh-rewind-plugin) 0.4.2 | ✅ | ✅ | ✅ | 每会话 100 组锚点 | ☠️ **会话长度** —— 整份拷贝,不去重 |
-| [@anionex/dsh-turn-rewind](https://www.npmjs.com/package/@anionex/dsh-turn-rewind) 0.1.2 | ❌ 只支持 git worktree | ✅ | ✅ | 每会话 50 个点 + 30 个自动点 | 目录树 |
-| [dsh-recall-plugin](https://www.npmjs.com/package/dsh-recall-plugin) 2.0.0 | ❌ 需要 CLI | ✅ 影子仓库 | ✅ | ⚠️ 没有边界 —— 它从不剪枝 | 目录树 |
-| [@zoytown/dsh-rewind](https://www.npmjs.com/package/@zoytown/dsh-rewind) 0.1.0 | ❌ 需要 CLI | ✅ 影子仓库 | ✅ | 30 天、每工作区 50 个会话 | 目录树 |
-| [@flow2dream/dsh-msg-rewind](https://www.npmjs.com/package/@flow2dream/dsh-msg-rewind) 0.1.6 | ✅ | ✅ | —— | —— | —— |
-
-**"捕获代价随什么增长"是那种最晚被发现、最早开始后悔的一列。** `dsh-rewind-plugin` 在每条消息边界重新检查它跟踪过的每一个文件,而且每份备份都是整份文件拷贝 —— 于是每轮的扫描和磁盘占用都随你聊了多久而增长。git 那几个走工作树,所以它们随目录树增长。这里的跟踪集是三个分区的并集,每个分区的边界都不是目录树的大小,declared 集合还会按滚动窗口老化 —— 这就是为什么 70,918 个文件只要 268 ms,以及为什么第二次捕获本仓库时一个哈希都没算。
-
-这两张表背后另外三个事实,每一条都能在对方发布出去的包里核到:
-
-- **只有这一个跟得住 agent 在项目目录之外的修改。** git 设计在构造上就被工作树框死了:agent 改的是 `~/.config` 里的文件、隔壁一个 checkout 里的文件、或者别的任何地方,那都不在任何人的树里,于是既快照不了,也回不来。这里的 pre-image 是在写入发生的那一刻记下的,路径指到哪里就记到哪里 —— edit-touched 这个分区的边界是 agent 做了什么,不是根目录下面有什么。
-- **agent 新建的文件可能在它的回退后还留着:**"快照不包含 untracked 文件"。一次把本轮新文件留在磁盘上的回退,不是回退。
-- **装机量最大的 `dsh-rewind-plugin` 无法撤销自己的回退** —— 它自己写着。就地遮蔽之后没有东西可以交还,而 fork 正是 `/redo` 能存在的前提。
-
-### 体积与速度
-
-| | 快照引擎 | 安装需要 | 捕获 70,918 文件的 checkout |
-|---|---|---|---|
-| **dsh-filesnap** | **编译过的 Rust**,一个静态二进制 | 0.23 MB 插件 + 4 MB 引擎,**再无其他** | **268 ms**,实测,数字在本 README 里 |
-| 五个用 git 的 | JavaScript,每轮 spawn 一次 `git` CLI | 0.05–0.81 MB,**外加机器上要装一个 `git`** | 未公布 |
-| 两个不用 git 的 | JavaScript,就在你会话的那个 Node 进程里 | 0.37–1.15 MB | 未公布 |
-
-**这里其他每一个插件都是用 JavaScript 做快照的。** 它们要么在正跑着你会话的那个 Node 进程里读文件、算哈希、拷贝,要么每轮 shell out 一次 `git`。这里的活是编译过的:有界扫描、内容哈希和原子恢复都是原生代码,跑在一个独立进程里 —— 这就是为什么一个 70,918 文件的 checkout 花 268 ms,而再捕获本仓库一次只花 8 ms。没有第二家给出过数字。
-
-引擎是这里最大的单个产物,而它同时就是全部依赖:没有运行时,没有 `git`,没有要装配的存储栈。`dsh-checkpoint-rewind` 要再加三行 profile 才存在第一个检查点。
-
-diff 视图和逐文件恢复是 checkpoint 那一对有、而这里还没有的东西。两者都在 roadmap 上:每个点都是一份内容寻址的 manifest,所以两点之间的 diff 是一次查询,不是一次重新设计。
-
-### 如果回退过程本身被中断
-
-上面每一张表问的都是"回退能不能成功"。没有一张问:**当出问题的正是回退本身时会怎样** —— 而那是损失最大的时刻,因为还原到一半的工作区,处于一个从未存在过的状态。
-
-**这里的还原只在有 tombstone 授权时才删文件。** 一次捕获只有在**核实过**某个路径确实不存在时,才把它记为"缺失"。读不到的路径 —— 权限错误、无法穿越的目录、瞬时 IO 失败 —— 会被跳过,绝不记为缺失,因为 tombstone 是还原删除文件的**唯一**许可。引擎里有一条就以此命名的测试:`a_path_that_cannot_be_read_is_skipped_rather_than_declared_absent`。
-
-值得在意的原因是:反过来那种写法**很容易写出来,而且出事时是无声的**。任何把"不在我的快照里"读成"该删掉"的设计,只要在捕获时遇到一个读不了的文件,就会删掉一个它压根没存过内容的文件。**这不是在指控其他插件** —— 我们没有读遍每个包的每条还原路径,这里也不会有表格假装读过。但这值得你在自己用的那个上查一下。
-
-**救援点在第一个字节落盘之前就已经存在。** 还原是在**动笔之前**拍救援点,而不是在收工之后,所以一次死在中途的回退仍然可逆 —— `/redo` 交还给你的正是那个快照。
-
-**存储不在你的项目里。** 它落在平台数据目录 —— Unix 上是 `$XDG_DATA_HOME` 或 `~/.local/share`,Windows 上是 `%LOCALAPPDATA%` —— 所以 `git clean -xdf`、重新 clone、删掉 `node_modules`,都不会让你损失什么。
-
-**它宁可拒绝,也不去猜。** agent 还在这一轮里的时候,回退会被拒绝,而不是和还在写文件的工具抢。捕获失败的那一轮**根本不出现在列表里**,而不是列出来、你点了再报错 —— 一个兑现不了的检查点比没有检查点更糟,因为你会围着它做打算。
-
-### 不会因为旧而被删
-
-这里其他每一个插件都按年龄或数量给存储设界,于是你想要的那个点会被你根本没要的点挤掉 —— `@zoytown/dsh-rewind` 更是直说:限额一到是整个会话一起删。
-
-这里没有任何东西因为旧而被回收。`delete` 是唯一能让一个点变得不可达的操作,`gc` 只收已经成为孤儿的东西、而且要过了宽限窗口才收,`doctor` 清理的是某次中断的操作留下的残骸。blob 在所有持有它的点之间共享,所以多留点位的代价是点与点之间变了什么,而不是每个点一份树的副本。
-
-> [!NOTE]
-> **这三个是引擎的命令,插件目前还没有把它们暴露出来。** 上面写的性质今天就成立
-> —— 没有任何东西会在你背后清理你的点 —— 但"回收空间"和"清理中断操作残骸"这两个
-> 开关还在往 `/rewind` 里接,浏览器控件还要更晚。写在这里而不是让你自己撞上:
-> `/rewind status` 现在会报一个磁盘数字,却没给你任何据此行动的手段。
->
-> 在那之前,引擎就在手边,也可以直接让 agent 替你跑:
->
-> ```shell
-> ~/.dsh/profiles/<profile>/node_modules/.bin/filesnap gc
-> ~/.dsh/profiles/<profile>/node_modules/.bin/filesnap doctor --workdir .
-> ~/.dsh/profiles/<profile>/node_modules/.bin/filesnap delete --session <id>
-> ```
->
-> 见 [路线图](#路线图)。
-
-**而且你可以问它存了什么。** `/rewind status` 会重新扫描,回答一个别处没人回答的问题 —— **这个项目里哪些文件没有被保护,以及为什么**:太大、读不了、不是普通文件。它同时报告占用的磁盘,并按"本工作区的记录"和"共享的 blob 存储"分开算,以及这里每个会话能往回走多远。它是只读的,所以你可以先看再决定。
-
-### 它唯一让你付的代价
-
-那些复用既有事件类型、或者把状态放在会话日志之外的设计,卸载后不留痕迹。本插件在加载时声明三个 session 事件类型,而这个声明不可能在不重新弄坏那些日志的前提下撤销,所以**卸载它会让它抓过快照的会话变得不可读**。见[已知限制](#已知限制)。
-
-*(本节的版本号、结论与行号,均于 2026-08-27 对照各包已发布的产物核对。它们都在动 —— 依赖其中某一行之前,请核对对方的当前版本。)*
-
-## 安装
-
-不需要手动装任何东西。`filesnap` 是本包的依赖,所以安装插件时会一并带来对应平台的预编译二进制:
+### 1. 安装
 
 ```console
 $ dsh plugin --profile web add dsh-filesnap
 ```
 
-二进制是**解析**出来的,不是从 `PATH` 找的 —— 启动器的 `bin` 条目落在 profile 的 `node_modules/.bin`,而 subprocess provider 那套经过清洗的环境没有理由包含它。只有在想指向另一个构建、或者 subprocess provider 的执行世界不是本机(此时应填裸名)时,才需要设置 `command` 配置项。
+启动器可能提示本包没有 `dsh.bundle`。这是预期行为：dsh-filesnap 通过插件 row
+挂载，而不是一个 profile layer。
 
-`dsh plugin` 会把参数转发给 profile 目录里的 pnpm,并给出一条警告:
+### 2. 启用
 
-```
-dsh: warning: dsh-filesnap declares no dsh.bundle — installed as a plain
-dependency, not a profile layer
-```
-
-这条警告是预期内的:这是一个插件而不是 bundle,所以它靠一行 row 挂载,而不是靠 layer。往该 profile 的 `cordis.patch.yml`(`~/.dsh/profiles/web/cordis.patch.yml`)里加一行:
+在 `~/.dsh/profiles/web/cordis.patch.yml` 中加入：
 
 ```yaml
-# `insert` 收的是一个列表,不是单行。
 - insert:
     - id: filesnap
       name: dsh-filesnap
 ```
 
-`dsh --profile web --dump-config` 会打印实际启动的那棵树,可以确认这一行有没有生效:
+如果使用 headless profile，把命令和路径中的 `web` 都换成 `headless`。
+
+### 3. 验证并使用
 
 ```console
 $ dsh --profile web --dump-config | grep -A 1 filesnap
@@ -272,199 +69,133 @@ $ dsh --profile web --dump-config | grep -A 1 filesnap
   name: dsh-filesnap
 ```
 
-## 本地试用
+重启 profile，完成一轮 agent 任务，然后输入 `/rewind`。如果组合后的 profile 中没有
+插件，或浏览器控件没有出现，请看[排障指南](docs/troubleshooting.zh.md)。
 
-从一份 checkout 出发,在发布任何东西之前:
+## 为什么选择 dsh-filesnap
 
-```console
-$ npm run build                                   # profile 加载的是 lib/
-$ dsh plugin --profile headless add /path/to/this/repo
-```
+| | 意味着什么 |
+|---|---|
+| **对话 + 文件** | 在选中的轮次 fork 对话，并把工作区恢复进同一个 fork。 |
+| **不依赖 Git** | 在 Git 仓库和普通目录中都能工作，不改变 commit、branch、stash 或 worktree 状态。 |
+| **回退也能撤销** | 在还原写入前先创建救援点，`/redo` 可以撤销这次回退。 |
+| **覆盖面更完整** | 支持二进制文件、被 Git 忽略的文件，以及经 `ctx.fs` 发生在项目目录外的编辑。 |
+| **原生引擎** | 有界扫描、内容寻址和还原运行在独立的 **🦀 Rust** 小型二进制中，不占用会话的 Node 进程。 |
+| **范围可检查** | `/rewind status` 会报告存储占用，以及哪些文件未被保护和对应原因。 |
 
-把同样那行 `insert` 加进 `~/.dsh/profiles/headless/cordis.patch.yml`,用 `--dump-config` 确认它组合进去了,然后在一个临时目录里跑一个任务:
+这套设计不会把版本控制当作快照仓库。带版本日期和源码审计的完整对比见
+[插件对比](docs/comparison.zh.md)。
 
-```console
-$ cd /tmp/scratch && echo hello > notes.txt
-$ dsh --profile headless "把 notes.txt 改成 goodbye"
-```
+## 命令
 
-会话的工作目录就是你运行它的地方,所以要在你想被快照的项目里跑。之后直接问引擎它记录了什么 —— session id 就是转录里那个:
+| 命令 | 结果 |
+|---|---|
+| `/rewind` | 列出每轮开始前捕获的工作区状态。 |
+| `/rewind <turn>` | 在该轮 fork 对话，并恢复对应文件。 |
+| `/redo` | 撤销落在当前会话中的回退。 |
+| `/rewind status` | 报告存储内容和当前未受保护的文件。 |
 
-```console
-$ filesnap log --session <session-id>
-{"v":1,"type":"log.entry","turn":"<session-id>.t1","manifest":"a1b2…","at":…,"files":2,"absent":0}
+`/rewind` 接受列表中显示的轮次编号或 point id。它刻意不支持“往回三轮”这样的相对
+寻址：还原会覆盖文件，因此目标必须明确。
 
-$ filesnap status | jq -r 'select(.type=="status.unprotected") | "\(.reason)\t\(.path)"'
-```
+这两个命令都不会触发模型轮次。回退是用户对对话执行的操作，不应该再经过被回退的对话。
 
-如果你有 harness 的 checkout,`pnpm dsh --profile headless "…"` 会改从源码启动。那条启动路径通过仓库自己的 tsconfig 解析 workspace 包,所以必须以 harness 作为工作目录运行 —— 这也让它成为快照**其他**目录的错误方式。那种情况请用安装好的 `dsh`。
+## 哪些文件会被保护
+
+每次模型 step 之前，dsh-filesnap 会捕获三个有界集合的并集：
+
+- 工作区已知的文件，包括 Git 报告的 tracked 文件名；
+- 在 `ctx.fs` 写入或编辑之前观察到的路径，即使路径位于项目目录之外；
+- 最近发生变化的工作区文件的有界扫描，用来覆盖 shell 命令造成的写入。
+
+内容按哈希寻址，因此未变化的文件会被复用，不会每轮复制一份。`.filesnapignore` 是
+对称的：被忽略的路径不会被存储、恢复，也不会被还原操作删除。只有目标快照明确记录某个
+路径当时不存在，还原才有权删除它。
+
+`/rewind status` 会重新扫描当前目录，并列出超出覆盖范围的项目，例如无法读取、过大或
+不是普通文件的路径。覆盖细节与还原不变量见[架构说明](docs/architecture.zh.md)。
+
+## 性能
+
+引擎运行在模型请求之前，而模型请求通常需要数秒。当前在 warm page cache 下得到的初步
+测量是：
+
+| 工作区 | 捕获文件数 | 首次捕获 | 重复捕获 |
+|---|---:|---:|---:|
+| 本仓库 | 84 | 20 ms | **8 ms** |
+| DeepSeek Harness monorepo | 磁盘上 70,918 个文件中的 7,995 个 | 1.75 s | **268 ms** |
+
+这些数字只描述原始测量机器，不是对所有设备的承诺。跟踪集合是有界的，不会每轮遍历
+70,918 个文件；重复捕获还会复用未变化的内容。测量方法、尚缺的机器元数据和复现命令见
+[基准测试](docs/benchmarks.zh.md)。
+
+## 浏览器体验
+
+可选的 `./client` export 会增加：
+
+- 每条已完成 assistant 消息旁边的回退操作；
+- header 中的 redo 和存储状态操作。
+
+转录本身已经是轮次列表，所以插件不会再增加一个重复的 checkpoint 面板。在浏览器中，
+部署先创建正确组合的子会话，host 把文件还原进去，client 再打开该子会话。headless 场景
+则由 host 插件自行 fork。
+
+浏览器 bundle 会在发布流程中完成类型检查和构建，但目前还没有自动化浏览器内测试。
 
 ## 配置
 
-每个字段在一台普通机器上都有正确的默认值;大多数部署一个都不用设。
+默认值适用于普通本地部署。
 
-| 字段 | 默认 | |
+| 字段 | 默认值 | 用途 |
 |---|---|---|
-| `command` | *(自动解析)* | 通常不设 —— 随本包安装的二进制会被自动找到。想用另一个构建时设它;当 subprocess provider 的执行世界不是本机时,设成一个由该 provider 通过自己的 `PATH` 解析的裸名。 |
-| `dataDir` | 平台数据目录 | 存储所在位置 —— Unix 上是 `$XDG_DATA_HOME` 或 `~/.local/share`,Windows 上是 `%LOCALAPPDATA%`。永远不在你的项目里面。 |
-| `timeoutMs` | `120000` | 单次调用的墙钟上限。开销大的是每轮那次扫描。 |
-| `graceMs` | `2000` | 超时或轮次被取消时,SIGTERM 到 SIGKILL 之间的宽限。 |
-| `maxOutputBytes` | `1048576` | 每条采集流的内存上限。 |
-| `declareEdits` | `true` | 在编辑前记录 pre-image。关掉它会把覆盖范围收窄到每轮扫描能看到的部分。 |
+| `command` | 自动解析 | 指向另一个引擎构建，或由远程 subprocess provider 解析的裸命令。 |
+| `dataDir` | 平台数据目录 | 存储位置，永远不在项目目录中。 |
+| `timeoutMs` | `120000` | 单次引擎调用的墙钟上限。 |
+| `graceMs` | `2000` | 取消或超时后从 SIGTERM 到 SIGKILL 的宽限时间。 |
+| `maxOutputBytes` | `1048576` | 每条输出流的内存上限。 |
+| `declareEdits` | `true` | 在编辑之前立即记录文件 pre-image。 |
 
-未知的键或不可用的值会在**加载时**失败,而不是在第一轮才失败:一个一小时后才以"快照丢了"的形式浮现的配置错误,和一个 bug 无法区分。
+未知字段和不可用值会在插件加载时失败，不会等到某次回退点悄悄消失后才暴露。
 
-filesnap 自己的扫描上限刻意**不**暴露。一个需要你去发现的边界不算边界,而 `filesnap status` 回答了那个设置本来要被用来回答的问题 —— 这个项目里哪些文件没有被保护,以及为什么。
+## 当前限制
 
-## 它不会做的事
+- 卸载插件后，包含其事件类型的会话在重新安装前无法读取；不会删除任何会话数据。
+- 在 web 输入框中键入 `/rewind` 只会报告子会话 id，不会自动跳转；逐轮浏览器操作会完成跳转。
+- host 自行执行的 headless fork 会继承模型 route 和 preset，但不会继承部署的 per-agent
+  模型选择或 workspace 挂载。
+- shell 在工作区外、大小边界之外或近期变化预算之外创建的文件，需要同时被文件系统写入
+  事件观察到才能覆盖。
+- 引擎已经支持 `gc`、`doctor` 和删除 session，但插件还没有把它们暴露为 `/rewind`
+  子命令。
 
-- **动你的版本控制。** git 只被当作文件**名字**的一个来源来读,从不写入。
-- **删除一个它从没观察过的文件。** 只有当被恢复到的那次快照曾经查找过某个路径、并且没有找到时,恢复才会移除它。
-- **快照你排除掉的东西。** `.filesnapignore` 是对称的 —— 被忽略的路径不会被存储、不会被恢复,也不会被恢复操作删除。
-- **因为一个文件失败而丢掉整次回退。** 写不进去的文件会被点名,其余的照常落地,结果里也会说明这一点。
-- **回退一个正在轮次中的 agent。** 请先停下它。否则回退会覆盖该轮自己的工具还在使用的文件。
-- **隐藏你回退离开的那个对话。** 它是被**标记**,而不是被归档 —— 标题前会多一个 `↩`,`/redo` 会把它去掉。`ctx.workspaceRegistry` 上有 `archiveSession`,但没有 unarchive,harness 自己的注释把它列为待办。把一对可逆操作中的一半归档掉,会让 `/redo` 之后两个对话都不可见 —— 比它想解决的混淆更糟。
+事件注册限制见[架构说明](docs/architecture.zh.md)，操作问题见
+[排障指南](docs/troubleshooting.zh.md)。
 
-## 它记录什么
+## 文档
 
-三个仅存于日志的 session 事件,通过声明合并进 `SessionEventMap`。它们都不是 `SurfaceEventType`:一次回退改变的是磁盘上有哪些文件、以及你站在哪个对话里,这两者都不是模型看得到的消息。
-
-| | |
+| 文档 | 回答什么问题 |
 |---|---|
-| `filesnap/point` | 这一轮存在一个快照,以及它的寻址 id |
-| `filesnap/rewound` | 本会话被回退了;对话在 `child` 中继续 |
-| `filesnap/redone` | 一次回退在此被撤销 |
+| [架构说明](docs/architecture.zh.md) | 何时捕获、fork 与还原的顺序，以及记录了什么。 |
+| [插件对比](docs/comparison.zh.md) | 不同 dsh rewind 设计的区别，并标明审计版本。 |
+| [基准测试](docs/benchmarks.zh.md) | 已发布的时间数据意味着什么，以及如何复现。 |
+| [排障指南](docs/troubleshooting.zh.md) | 安装、profile、client bundle 和存储诊断。 |
+| [参与贡献](CONTRIBUTING.zh.md) | 本地开发、构建和四层测试。 |
 
-它们同时驱动一个名为 `filesnap` 的 **session projection**,浏览器靠它读取回退点列表,而不必从一份为别的目的渲染的转录里重新推导。这个 projection 通过 `ctx.inject` 注册,所以没有 projection 注册表的组装不受影响。
-
-它们存在于日志而不是一张旁表里,是因为 fork 会深拷贝种子:记在日志里的点会跟着进入每一个继承了对应轮次的子会话,所以一个刚 fork 出来的会话在自己还没跑过任何一轮时,就已经能提供回退点。
-
-**插件在加载时把这三个类型声明给持久化读取端,而且必须这么做。** 读取端会拒绝一个含有它不认识的类型的日志,除非该事件被标记为 `ignorable`,而这个逃生口的两半对仓库外的插件都是关闭的:`KNOWN_SESSION_EVENT_TYPES` 由仓库内的声明生成 —— 下游事件"由构造决定"不在其中,而注册接口"推迟到真有这样的消费者出现时再做";同时 `Session.append` 对非 surface 事件不接受任何选项,所以那个标记设不了。不声明的话,凡是本插件抓过快照的会话都会以 `SessionFormatUnsupportedError` 打不开。
-
-这个声明**刻意不随卸载而撤销**,因为撤销它会让那些日志重新变成读不了的。这就是它的代价,直说:**卸载本插件会让它抓过快照的会话变得不可读。** 消除这个代价的修法在上游 —— 一个注册接口,或者一个能把事件标记为 ignorable 的 `append`。
-
-## 给其他插件用
-
-服务是 `ctx.filesnap`。
-
-```ts
-const points = await ctx.filesnap.points(agent)
-if (points.ok) {
-  const outcome = await ctx.filesnap.rewind(agent, String(points.value[0].turn))
-}
-```
-
-`rewind` 接受一个可选的目标。`{ kind: 'fork' }`(默认)让它自己 fork 对话;`{ kind: 'into', session }` 则把撤销记录归档进你**已经**建好的会话 —— 一个自带 fork 逻辑的部署应该传这个,这样本插件就不会在它旁边再造一个。
-
-每个操作返回 `{ ok: true, value }` 或 `{ ok: false, refusal }`,而不是抛异常。每个调用方都得把原因渲染出来,而异常会逼它们各自从一个消息字符串里重新推导。
-
-## 为什么每个 `@deepseek-ai` peer 都是 optional
-
-声明它们是为了让依赖关系可见,标成 optional 是为了让任何人都别去满足它。一个 dsh 插件**绝不能**携带自己那份 harness 包:它运行在一个已组装好的 harness 里,用的是那里已有的那份。第二份不是"重复依赖",而是**第二个 Cordis** —— 不同的 `Service` 类、不同的注册表,以及一个 `inject` 永远无法解析、而且是静默无法解析的插件。
-
-profile 的安装路径本身已经避免了这一点(profile 的 pnpm 设置里有 `autoInstallPeers: false`,再加上启动器指回安装自身模块的符号链接兜底)。标成 optional 是为了让裸的 `npm install dsh-filesnap` 表现一致,而不是去试图具现一组解析不出来的依赖 —— harness 的几条发布线并不同步,所以 npm 的 peer 自动安装会撞上一个真实的冲突。
-
-## 开发
-
-harness 那些包是 `peerDependencies` —— 部署方本来就有它们,在这里锁版本只会和它实际运行的那份打架。要在本地做类型检查和跑测试,链接一份**已构建**的同级 checkout:
-
-```console
-$ git clone https://github.com/deepseek-ai/deepseek-harness ../deepseek-harness
-$ ( cd ../deepseek-harness && pnpm install && pnpm run build )
-$ npm install
-$ npm run harness:link
-$ npm run typecheck && npm test
-```
-
-`harness:link` 把 harness **构建产物**里的包软链进 `node_modules`,而不写进 `package.json` —— 这样对没有 checkout 的人来说 `npm install` 依然可复现。"已构建"这点很重要:消费者解析到的是 `lib/types/*.d.ts`,而对着 `src` 检查等于用本项目的编译器设置去类型检查 harness 自己的源码,而不是在检查这个插件。
-
-`harness:link` 在**任何一次 `npm install` 之后都要重跑**:npm 会清理 `package.json` 里没有写明的东西,而这些链接正是刻意不写在那里的。
-
-测试分四层。`npm run test:standalone` 既不需要 harness 也不需要二进制。engine、service 和 wiring 三层驱动真实的 `filesnap` 命令,而 `npm install` 已经把它带进来了 —— 所以直接就能跑。`FILESNAP_BIN` 可以让它们指向另一个构建,同级 `filesnap` checkout 的 cargo 产物是最后的兜底。
-
-两个构建面:
-
-```console
-$ npm run build          # host 半边 —— 纯 tsc,不需要 harness
-$ npm run build:client   # lib/client.js —— 需要 harness checkout
-```
-
-浏览器产物是 harness 自己的 closure-factory 格式,由它的 tsdown preset 生成。那个 preset 是仓库里的一个文件而不是已发布的入口,并且它通过 glob harness 的 `packages/` 目录树来解析一个包的 externals —— 所以 `build:client` 会在构建期间把本包的 manifest 暂存到那里,构建完再删掉。源码、配置和产物全都留在本仓库。这没有看上去那么苛刻:web 应用本身就是从 harness 仓库构建的,所以任何要组装一个包含本插件的 web 构建的人,手上本来就有一份 checkout。
-
-## 已知限制
-
-- **在 web 输入框里直接敲 `/rewind`,只会报出新会话的 id 而不会跳过去。** host 的命令注册表返回的是文本,所以那条路径只能点名那个 fork、由用户自己打开。header 里的入口没有这个问题:它自己 fork 并跳转。
-- **插件自行 fork 时会继承父会话的模型路由和 preset,但不包括按 agent 的模型*选择*和 workspace 挂载。** 那些在部署自己的 fork 路径(`sessions.fork`)里,而 `--into` 存在的意义就是把这件事让给它 —— 所以带着这个缺口的是 headless 那条 fork。
-- **卸载插件会让它抓过快照的会话变成读不了。** 见"它记录什么" —— 事件类型声明无法在不重新破坏那些日志的前提下撤销,所以移除插件会让那条拒绝重新生效。
-- **浏览器半边只做过类型检查和构建验证,没有做过浏览器内测试。** 产物是 shell 自己的格式,两个面都对着 harness 的声明编译通过,但没有任何测试驱动过渲染出来的界面。
-- **一个把未声明的服务当属性读的插件会被静默拆除。** Cordis 拒绝这次读取,异常从 service 构造函数里冲出去,fiber 被销毁且没有任何日志 —— 于是插件就那样不存在了。本插件通过 `ctx.get` 获取 `commands`、`fs`、`agentPresets` 和 logger,而 `tests/wiring.spec.ts` 的存在就是为了让它保持如此:它断言启动后服务仍然可达,以及一个被派发的轮次确实到达了引擎。service 层的测试看不见这种失败,因为直接调一个方法完全不能证明轮次会不会到达它。
-- **抓取失败的那一轮不提供回退点。** 失败信息在 stderr;那个点是缺席,而不是被列出来然后在使用时被拒绝。
-- **shell 写出的文件,其覆盖范围跟随扫描。** shell 命令在工作区外创建的文件、超过大小上限的、或超出最近性预算的,只有在它同时经过文件系统 seam 时才被覆盖。
-
-## 路线图
-
-按"最挡路"排序,不按"最好做"排序。这里每一条都能对应到本 README 里点明的缺口,或者
-源码里的一个标记。
-
-**`/rewind gc`、`/rewind doctor`、`/rewind delete <session>`。** 引擎三个都有,插件
-一个都没暴露 —— 这正是 `/rewind status` 报出一个你在 dsh 里无法据以行动的磁盘数字的
-原因。先做命令,再做浏览器控件;过渡期的调用方式见
-[不会因为旧而被删](#不会因为旧而被删)。
-
-**两个点之间的 diff,以及按文件还原。** 这是 checkpoint 那一对有、而这里没有的唯一一
-项。每个点都是一份内容寻址的 manifest,所以这是一次查询,不是一次重新设计。
-
-**回退之外的浏览器控件。** 回退控件在每一轮的消息操作行里,状态栏在会话头部。其余的
-—— 状态详情、空间回收、删除 —— 目前只有命令。浏览器那一半是"类型检查过并构建过",而
-不是"在浏览器里测过",所以这个面是**有意**长得慢。
-
-**不靠改写 harness 常量来声明会话事件类型。** 这是本插件今天唯一让你付出代价的地方:
-三个事件类型是靠往另一个包导出的常量里写来声明的,所以卸载插件会让它捕获过的会话变得
-打不开。修法在上游 —— 给出仓插件一个受支持的声明点,或者一个读取器认账的 `ignorable`
-标记。源码里记为 `FIXME(upstream-event-registration)`。
-
-**在"能取回归档"之后,把被回退的对话归档。** 现在一次回退是给它离开的那个对话打上
-`↩` 标记,而不是归档,因为 `unarchiveSession` 不存在,而一个 `/redo` 撤不回来的归档是
-个陷阱。等它落地会被特性探测到。记为 `XXX(archive-when-reversible)`。
-
-## 这个项目从哪来
-
-本插件是一个想法在 dsh 这一侧的实现,而这个想法最先是在
-**[codex-rewind](https://github.com/extracurricular-ai/codex-rewind)** 里做通的
-—— 那是 [OpenAI Codex CLI](https://github.com/openai/codex) 的一个非官方发行版,
-给它加上了 `/rewind` 和 `/redo`,和本仓库出自同一批人,许可也相同。
-
-这里的设计就是那边的设计。追踪范围是同一个并集 —— git 已经追踪的文件、agent 编辑
-过的文件(不管它在哪),以及一次有界的近期改动扫描来兜住 shell 命令碰过的东西 ——
-连同那些塑造它的判断:从不读 `.git`;隐藏文件默认不管,因为工具状态不是你的工作;
-被忽略的路径永不快照、永不还原、也永不删除。这边新增的是 harness 那一半:什么时候
-快照、当对话可以 fork 之后一个回退点还意味着什么,以及一次回退的两半按什么顺序发生。
-
-**如果本插件对你有用,而你也在用 Codex,那就该去看看它。** 它安装为 `codexr`,
-是装在官方版**旁边**而不是覆盖掉它:
-
-```shell
-npm install -g codex-rewind
-```
-
-另外还有一个[讲解视频](https://youtu.be/OpJI8NQ-mvY),大部分篇幅在讲**为什么 git
-不适合做这件事的地基**、以及这套方法到哪里为止 —— 是两个项目背后的推理,不是功能
-演示。
+快照引擎也可以脱离 dsh 使用：通过 Rust（`cargo add filesnap`）或其带版本的 JSON Lines
+CLI 集成。本仓库完整的 subprocess adapter 是 [`src/cli.ts`](src/cli.ts)。
 
 ## 参与贡献
 
-**欢迎提 issue 和 PR,而且两者都不需要打磨得很完整。** 一句话加一段堆栈的 bug 报告,比那份始终没写出来的详尽报告有价值得多。
+欢迎用中文或英文参与：
 
-| | |
-|---|---|
-| [**Discussions**](https://github.com/extracurricular-ai/dsh-filesnap/discussions) | 提问、想法、"这样是不是本来就该这样"、展示你做的东西 |
-| [**Issues**](https://github.com/extracurricular-ai/dsh-filesnap/issues) | 有东西坏了,或者某个具体的地方该改 |
-| [**Pull requests**](https://github.com/extracurricular-ai/dsh-filesnap/pulls) | 你已经把它修好了 |
+- [Discussions](https://github.com/extracurricular-ai/dsh-filesnap/discussions)：问题、想法和使用案例；
+- [Issues](https://github.com/extracurricular-ai/dsh-filesnap/issues)：bug 和明确的改进项；
+- [Pull requests](https://github.com/extracurricular-ai/dsh-filesnap/pulls)：已经实现的修改。
 
-选错了没有任何代价 —— 我们会挪。用中文或英文都行,哪个顺手用哪个。
+修改 host/engine 边界前请阅读 [CONTRIBUTING.zh.md](CONTRIBUTING.zh.md)。安全问题请通过
+[SECURITY.md](SECURITY.md) 中的私有渠道报告，不要创建公开 issue。
 
-[CONTRIBUTING.zh.md](CONTRIBUTING.zh.md) 里有本地开发的装配、四层测试,以及动手之前最值得知道的那一件事 —— 你的改动属于两个仓库里的哪一个。[安全问题请走私有渠道](SECURITY.md),不要开公开 issue。所有参与者都受[行为准则](CODE_OF_CONDUCT.md)约束。
+## 许可证
 
-## 许可
-
-Apache-2.0,见 [LICENSE](LICENSE)。它驱动的引擎 [filesnap](https://github.com/extracurricular-ai/filesnap) 使用同一许可。
+Apache-2.0，见 [LICENSE](LICENSE)。它使用的
+[filesnap](https://github.com/extracurricular-ai/filesnap) 引擎采用同一许可证。
