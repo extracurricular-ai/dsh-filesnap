@@ -8,6 +8,9 @@
 
 [English](README.md) | 中文
 
+[参与讨论](https://github.com/extracurricular-ai/dsh-filesnap/discussions) ·
+[报告问题](https://github.com/extracurricular-ai/dsh-filesnap/issues/new?template=bug_report.yml)
+
 为 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)
 同步回退对话与工作区文件，不碰 Git。每次回退都发生在一个新的 fork 中，因此改变主意时
 还可以用 `/redo` 回去。

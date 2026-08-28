@@ -8,6 +8,9 @@
 
 English | [中文](README.zh.md)
 
+[Join the discussion](https://github.com/extracurricular-ai/dsh-filesnap/discussions) ·
+[Report a bug](https://github.com/extracurricular-ai/dsh-filesnap/issues/new?template=bug_report.yml)
+
 Rewind a [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)
 conversation and its workspace together — without touching Git. Every rewind
 happens in a fork, so `/redo` can take you back if you change your mind.
