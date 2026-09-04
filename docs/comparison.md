@@ -3,7 +3,7 @@
 [README](../README.md) · [中文](comparison.zh.md)
 
 > [!NOTE]
-> This audit was checked against published package artifacts on **2026-08-27**.
+> This audit was checked against published package artifacts on **2026-09-04**.
 > Package behavior changes. Verify the current release before relying on a row,
 > and open an issue when a claim is stale or incomplete.
 
