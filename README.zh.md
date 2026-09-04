@@ -50,9 +50,13 @@ $ dsh plugin --profile web add dsh-filesnap
 ```
 
 安装到此为止：本包声明了 `dsh.bundle`，启动器会自己把它挂进 profile。headless
-profile 把 `web` 换成 `headless` 即可。如果你为 0.2.2 之前的版本在 profile 的
-`cordis.patch.yml` 里手动加过 `id: filesnap` 那一行，它照常有效——profile 自己的
-patch 在 bundle 之后应用，同 id 的行会覆盖而不是重复。
+profile 把 `web` 换成 `headless` 即可。
+
+> [!WARNING]
+> **从 0.2.1 或更早升级？** 那些版本要求你在 `~/.dsh/profiles/<profile>/cordis.patch.yml`
+> 里手动加一行 `id: filesnap`。**在 0.2.2 上启动 dsh 之前，先删掉那一行。** 现在 bundle
+> 会提供同一行，loader 拒绝两个同 id 的条目，dsh 会起不来：
+> `plugin tree failed to load: … duplicate loader entry id: filesnap`。
 
 ### 2. 验证并使用
 

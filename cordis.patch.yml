@@ -2,9 +2,9 @@
 #
 # `dsh plugin add` reads this through package.json's `dsh.bundle.patch` and
 # applies it as a bundle layer, so nothing has to be added to the profile's
-# own cordis.patch.yml by hand. A row you did add there under `id: filesnap`
-# keeps working: the profile's own patch applies after every bundle layer,
-# and a row with the same id overrides this one rather than duplicating it.
+# own cordis.patch.yml by hand. If an earlier version had you add a row under
+# `id: filesnap` there, delete it: the loader refuses two entries with one id
+# and the whole plugin tree fails to load ("duplicate loader entry id").
 - insert:
     - id: filesnap
       name: dsh-filesnap

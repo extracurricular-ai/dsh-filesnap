@@ -28,8 +28,29 @@ headless 文件）中加入：
       name: dsh-filesnap
 ```
 
-这样加的行在升级后照常有效：profile 自己的 patch 在所有 bundle 层之后应用，同 id 的行
-会覆盖 bundle 里的那一行，而不是重复挂载。
+**升级到 0.2.2 之前先删掉那一行。** bundle 会提供同一行，而 loader 拒绝两个同 id 的
+条目——见下一节。
+
+## dsh 启动失败：`duplicate loader entry id: filesnap`
+
+```text
+dsh: plugin tree failed to load: failed to apply loader entry include
+(cordis:include): duplicate loader entry id: filesnap
+```
+
+profile 里有两行 `filesnap`：一行是 0.2.2 的 bundle 现在提供的，另一行是旧版本说明让你手动
+加的。loader 不会按 id 合并或覆盖——第二个带已有 id 的 `insert` 是错误，整棵插件树拒绝加载。
+
+打开 `~/.dsh/profiles/<profile>/cordis.patch.yml`，删掉手动加的这一块：
+
+```yaml
+- insert:
+    - id: filesnap
+      name: dsh-filesnap
+```
+
+文件里其它行不要动。重新启动 dsh；`--dump-config` 里 `name: dsh-filesnap` 应该只出现一次，
+在 `# == dsh-filesnap` 层下面。
 
 ## 插件似乎没有加载
 

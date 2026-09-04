@@ -53,9 +53,14 @@ $ dsh plugin --profile web add dsh-filesnap
 
 That is the whole install: the package declares a `dsh.bundle`, so the launcher
 mounts it into the profile itself. For headless use, replace `web` with
-`headless`. If you added an `id: filesnap` row to the profile's
-`cordis.patch.yml` by hand for a version before 0.2.2, it keeps working — the
-profile's own patch applies after the bundle and overrides the same id.
+`headless`.
+
+> [!WARNING]
+> **Upgrading from 0.2.1 or earlier?** Those versions asked you to add an
+> `id: filesnap` row to `~/.dsh/profiles/<profile>/cordis.patch.yml` by hand.
+> **Delete that row before you start dsh on 0.2.2.** The bundle now supplies
+> the same row, the loader refuses two entries with one id, and dsh will not
+> boot: `plugin tree failed to load: … duplicate loader entry id: filesnap`.
 
 ### 2. Verify and use
 

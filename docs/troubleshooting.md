@@ -30,9 +30,32 @@ On the older version the plugin has to be mounted by hand — add this row to
       name: dsh-filesnap
 ```
 
-A row added this way keeps working after the upgrade: the profile's own patch
-applies after every bundle layer, and a row with the same id overrides the
-bundle's rather than duplicating it.
+**Delete that row before upgrading to 0.2.2.** The bundle supplies the same row
+and the loader refuses two entries with one id — see the next section.
+
+## dsh fails to start with `duplicate loader entry id: filesnap`
+
+```text
+dsh: plugin tree failed to load: failed to apply loader entry include
+(cordis:include): duplicate loader entry id: filesnap
+```
+
+The profile has two `filesnap` rows: the one the 0.2.2 bundle now supplies, and
+the one an earlier version's instructions had you add by hand. The loader does
+not merge or override rows by id — a second `insert` carrying an existing id is
+an error, and the whole plugin tree refuses to load.
+
+Open `~/.dsh/profiles/<profile>/cordis.patch.yml` and delete the hand-added
+block:
+
+```yaml
+- insert:
+    - id: filesnap
+      name: dsh-filesnap
+```
+
+Leave any other rows in that file alone. Start dsh again; `--dump-config` should
+now list `name: dsh-filesnap` exactly once, under the `# == dsh-filesnap` layer.
 
 ## The plugin does not appear to load
 
