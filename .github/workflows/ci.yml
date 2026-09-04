@@ -58,6 +58,10 @@ jobs:
         run: pnpm install --ignore-scripts && pnpm run build
       - run: npm ci
       - run: npm run harness:link
+      # Also here, where a real `.harness` directory sits inside the workspace:
+      # the release runs this inside `prepublishOnly` under the same layout, and
+      # a release must never be the first environment a check is exercised in.
+      - run: npm run check:docs
       - run: npm run typecheck
       - run: npm test
       - run: npm run build

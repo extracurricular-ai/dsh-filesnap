@@ -5,10 +5,19 @@ const root = process.cwd()
 const manifest = JSON.parse(await readFile(path.join(root, 'package.json'), 'utf8'))
 const failures = []
 
+// A harness checkout is a build input, not this project's documentation. CI and
+// the release place it INSIDE the workspace (`actions/checkout` refuses a path
+// outside it), so without this the walk descends into the harness's own notes
+// and fails on links that were never ours to keep. `.harness` is the name both
+// workflows use; DSH_HARNESS covers a checkout placed anywhere else under root.
+const harness = process.env.DSH_HARNESS === undefined ? undefined : path.resolve(root, process.env.DSH_HARNESS)
+const skippedDirectories = new Set(['.git', 'node_modules', 'lib', '.harness'])
+
 async function markdownFiles(directory = root) {
   const found = []
   for (const entry of await readdir(directory, { withFileTypes: true })) {
-    if (entry.name === '.git' || entry.name === 'node_modules' || entry.name === 'lib') continue
+    if (skippedDirectories.has(entry.name)) continue
+    if (harness !== undefined && path.join(directory, entry.name) === harness) continue
     const absolute = path.join(directory, entry.name)
     if (entry.isDirectory()) found.push(...await markdownFiles(absolute))
     else if (entry.isFile() && entry.name.endsWith('.md')) found.push(absolute)
