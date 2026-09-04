@@ -16,7 +16,7 @@
  */
 
 import { KNOWN_SESSION_EVENT_TYPES } from '@deepseek-ai/dsh-session'
-import type { SessionId } from '@deepseek-ai/dsh-session'
+import type { SessionId, SessionSeq } from '@deepseek-ai/dsh-session'
 import type { RewindPoint } from './wire.ts'
 
 export type { FilesnapProjection, RewindPoint, RewindRecord } from './wire.ts'
@@ -118,7 +118,7 @@ export interface RewindOutcome {
    * names it rather than parsing the summary text, so the lifecycle of the
    * command and the domain record of what happened stay joined.
    */
-  readonly eventSeq: number
+  readonly eventSeq: SessionSeq
   /**
    * The marked title the conversation being left now carries. Absent when it
    * could not be retitled — it is not live, or the deployment composes no
@@ -166,7 +166,7 @@ export interface RedoOutcome {
   /** Paths that moved between the rewind and this undo. */
   readonly conflicts: readonly string[]
   /** Seq of the `filesnap/redone` event in this session's log. */
-  readonly eventSeq: number
+  readonly eventSeq: SessionSeq
   /** The conversation this redo hands back to, when this session was forked from one. */
   readonly returnedTo?: SessionId
   /**

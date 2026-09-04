@@ -23,14 +23,14 @@ import { agentEvents } from '@deepseek-ai/dsh-agent'
 import type { Agent, PreStepDecision } from '@deepseek-ai/dsh-agent'
 import CommandRuntime from '@deepseek-ai/dsh-commands'
 import { createAssistantMessage, createUserMessage } from '@deepseek-ai/dsh-llm'
-import { KNOWN_SESSION_EVENT_TYPES, Session, SessionId } from '@deepseek-ai/dsh-session'
+import { KNOWN_SESSION_EVENT_TYPES, SESSION_FORMAT_VERSION, Session, SessionId } from '@deepseek-ai/dsh-session'
 import type { SessionHeader } from '@deepseek-ai/dsh-session'
 import { apply, FILESNAP_EVENT_TYPES } from '../src/index.ts'
 import { BINARY, nodeSubprocess, scratch } from './support.ts'
 
 /** A session bound to a working directory, and the slice of `Agent` this plugin reads. */
 function agentAt(id: string, cwd: string): Agent & { session: Session } {
-  const header: SessionHeader = { version: 0, id: SessionId(id), createdAt: 1_700_000_000_000, cwd }
+  const header: SessionHeader = { version: SESSION_FORMAT_VERSION, isSeeded: false, id: SessionId(id), createdAt: 1_700_000_000_000, cwd }
   const session = Session.create(SessionId(id), undefined, header)
   return {
     id: session.header.id,
@@ -171,7 +171,7 @@ describe.skipIf(BINARY === undefined)('the plugin as a deployment mounts it', ()
     )
     expect(decision.kind).toBe('enter')
 
-    const point = agent.session.events.find(event => event.type === 'filesnap/point')
+    const point = agent.session.snapshotEvents().find(event => event.type === 'filesnap/point')
     expect(point?.type === 'filesnap/point' && point.data.point).toBe('session-a.t1')
   })
 
@@ -249,6 +249,6 @@ describe.skipIf(BINARY === undefined)('the plugin as a deployment mounts it', ()
       { messages: [], turn: 1, step: 1, signal: new AbortController().signal },
       (): Promise<PreStepDecision> => Promise.resolve({ kind: 'reject' }),
     )
-    expect(agent.session.events.some(event => event.type === 'filesnap/point')).toBe(false)
+    expect(agent.session.snapshotEvents().some(event => event.type === 'filesnap/point')).toBe(false)
   })
 })

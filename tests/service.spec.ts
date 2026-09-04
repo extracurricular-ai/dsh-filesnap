@@ -11,7 +11,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { createAssistantMessage, createUserMessage } from '@deepseek-ai/dsh-llm'
-import { Session, SessionId } from '@deepseek-ai/dsh-session'
+import { SESSION_FORMAT_VERSION, Session, SessionId } from '@deepseek-ai/dsh-session'
 import type { SessionEvent, SessionHeader } from '@deepseek-ai/dsh-session'
 import { resolveConfig } from '../src/config.ts'
 import { FilesnapRewind } from '../src/service.ts'
@@ -20,7 +20,8 @@ import { BINARY, nodeSubprocess, scratch } from './support.ts'
 /** One detached session bound to a working directory. The header is frozen at construction, so lineage is passed in. */
 function sessionAt(id: string, cwd: string, parent?: string): Session {
   const header: SessionHeader = {
-    version: 0,
+    version: SESSION_FORMAT_VERSION,
+    isSeeded: false,
     id: SessionId(id),
     createdAt: 1_700_000_000_000,
     cwd,
@@ -136,7 +137,7 @@ describe.skipIf(BINARY === undefined)('FilesnapRewind', () => {
     session.append('turn/start', { turn: 1 })
     await service.capture(agent, 1)
 
-    const point = session.events.find(event => event.type === 'filesnap/point')
+    const point = session.snapshotEvents().find(event => event.type === 'filesnap/point')
     expect(point?.type === 'filesnap/point' && point.data).toMatchObject({ turn: 1, point: 'session-a.t1' })
     expect(point?.type === 'filesnap/point' && point.data.manifest).toMatch(/^[0-9a-f]{64}$/u)
   })
@@ -148,7 +149,7 @@ describe.skipIf(BINARY === undefined)('FilesnapRewind', () => {
     await service.capture(agent, 1)
     await service.capture(agent, 1)
     await service.capture(agent, 1)
-    expect(session.events.filter(event => event.type === 'filesnap/point')).toHaveLength(1)
+    expect(session.snapshotEvents().filter(event => event.type === 'filesnap/point')).toHaveLength(1)
   })
 
   it('does not recapture a turn a previous process already captured', async () => {
@@ -158,15 +159,15 @@ describe.skipIf(BINARY === undefined)('FilesnapRewind', () => {
     session.append('turn/start', { turn: 1 })
     session.append('filesnap/point', { turn: 1, point: 'session-a.t1', manifest: 'seeded', reused: 0, hashed: 0, dropped: 0 })
     await service.capture(agentOn(session), 1)
-    expect(session.events.filter(event => event.type === 'filesnap/point')).toHaveLength(1)
+    expect(session.snapshotEvents().filter(event => event.type === 'filesnap/point')).toHaveLength(1)
   })
 
   it('leaves a session with no working directory alone', async () => {
-    const header: SessionHeader = { version: 0, id: SessionId('session-nowhere'), createdAt: 1, ...{} }
+    const header: SessionHeader = { version: SESSION_FORMAT_VERSION, isSeeded: false, id: SessionId('session-nowhere'), createdAt: 1, ...{} }
     const session = Session.create(SessionId('session-nowhere'), undefined, header)
     session.append('turn/start', { turn: 1 })
     await service.capture(agentOn(session), 1)
-    expect(session.events.some(event => event.type === 'filesnap/point')).toBe(false)
+    expect(session.snapshotEvents().some(event => event.type === 'filesnap/point')).toBe(false)
 
     const points = await service.points(agentOn(session))
     expect(points.ok).toBe(false)
@@ -206,7 +207,7 @@ describe.skipIf(BINARY === undefined)('FilesnapRewind', () => {
     // The assistant messages come across with it: a seed without them carries
     // points no fork can anchor on, which is not what a fork looks like.
     const child = sessionAt('session-b', workspace.path)
-    for (const event of parent.events) {
+    for (const event of parent.snapshotEvents()) {
       if (event.type === 'filesnap/point') child.append('filesnap/point', event.data)
       else if (event.type === 'turn/start') child.append('turn/start', event.data)
       else if (event.type === 'turn/end') child.append('turn/end', event.data)
@@ -231,7 +232,7 @@ describe.skipIf(BINARY === undefined)('FilesnapRewind', () => {
 
     writeFileSync(file, 'original\n')
     await runTurn(session, 1, 'set it up', async () => { await service.capture(agent, 1) })
-    const afterFirstTurn = session.events.length
+    const afterFirstTurn = session.snapshotEvents().length
     await runTurn(session, 2, 'break it', async () => { await service.capture(agent, 2) })
     writeFileSync(file, 'something regrettable\n')
 
@@ -257,7 +258,7 @@ describe.skipIf(BINARY === undefined)('FilesnapRewind', () => {
     expect(outcome.value.child).toBe(forked[0]?.id)
 
     // The source log says where the user went.
-    const record = session.events.findLast(event => event.type === 'filesnap/rewound')
+    const record = session.snapshotEvents().findLast(event => event.type === 'filesnap/rewound')
     expect(record?.type === 'filesnap/rewound' && record.data).toMatchObject({
       point: 'session-a.t2',
       turn: 2,
@@ -274,7 +275,7 @@ describe.skipIf(BINARY === undefined)('FilesnapRewind', () => {
     writeFileSync(join(workspace.path, 'a.txt'), 'v1\n')
 
     await runTurn(session, 1, 'first', async () => { await service.capture(agent, 1) })
-    const afterFirstTurn = session.events.length
+    const afterFirstTurn = session.snapshotEvents().length
     await runTurn(session, 2, 'second', async () => { await service.capture(agent, 2) })
 
     const outcome = await service.rewind(agent, '2')
@@ -305,7 +306,7 @@ describe.skipIf(BINARY === undefined)('FilesnapRewind', () => {
     const redone = await service.redo(agentOn(child))
     expect(redone.ok).toBe(true)
     expect(readFileSync(file, 'utf8')).toBe('later work\n')
-    expect(child.events.some(event => event.type === 'filesnap/redone')).toBe(true)
+    expect(child.snapshotEvents().some(event => event.type === 'filesnap/redone')).toBe(true)
   })
 
   it('accepts a fork the caller already performed', async () => {

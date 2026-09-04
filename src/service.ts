@@ -21,7 +21,7 @@ import { Context, Service } from '@deepseek-ai/cordis'
 import type { Agent, PreStepDecision } from '@deepseek-ai/dsh-agent'
 import type { FsTarget, FsVersion, FsWriteIntent } from '@deepseek-ai/dsh-fs'
 import type { Session, SessionEvent, SessionId } from '@deepseek-ai/dsh-session'
-import { SessionId as brandSessionId } from '@deepseek-ai/dsh-session'
+import { SessionId as brandSessionId, SessionLogOffset } from '@deepseek-ai/dsh-session'
 import { registerCommands } from './commands.ts'
 import type { FilesnapCli, FilesnapRun } from './cli.ts'
 import { bundledBinary } from './binary.ts'
@@ -84,7 +84,7 @@ function engineRefusal<T>(run: FilesnapRun, what: string): RewindResult<T> {
  * @returns the open turn's number, or 0 when no turn has opened.
  */
 export function currentTurn(session: Session): number {
-  const last = session.events.findLast(event => event.type === 'turn/start')
+  const last = session.snapshotEvents().findLast(event => event.type === 'turn/start')
   return last?.type === 'turn/start' ? last.data.turn : 0
 }
 
@@ -117,13 +117,14 @@ function failures(run: FilesnapRun): { path: string; error: string }[] {
  * @returns the preset id, or undefined when the deployment composes none.
  */
 function sessionPreset(source: Session): string | undefined {
-  for (let index = source.events.length - 1; index >= 0; index -= 1) {
+  const events = source.snapshotEvents()
+  for (let index = events.length - 1; index >= 0; index -= 1) {
     // Widened before the comparison, not narrowed after it. `SessionEventMap`
     // only carries `agent-preset/selected` when the presets package is in the
     // compilation, and this plugin does not import it — a deployment that
     // composes no presets should not have to. Declaring the type here instead
     // would put a second owner on another package's event.
-    const event = source.events[index] as { type: string; data?: { agentPreset?: unknown } } | undefined
+    const event = events[index] as { type: string; data?: { agentPreset?: unknown } } | undefined
     if (event?.type !== 'agent-preset/selected') continue
     const selected = event.data?.agentPreset
     if (typeof selected === 'string') return selected
@@ -376,7 +377,7 @@ export class FilesnapRewind extends Service {
         : { ok: false, why: `filesnap refuses the session id "${session.id}" because ${explain(admitted.refusal)}` }
 
     const captured = new Set<number>()
-    for (const event of session.events) {
+    for (const event of session.snapshotEvents()) {
       if (event.type === 'filesnap/point') captured.add(event.data.turn)
     }
     const state: TrackState = { binding, captured, declared: new Map() }
@@ -515,7 +516,7 @@ export class FilesnapRewind extends Service {
     if (!state.binding.ok) return refuse({ kind: 'untracked', why: state.binding.why })
     const cli = await this.invoker()
     if ('unavailable' in cli) return refuse({ kind: 'untracked', why: cli.unavailable })
-    const logged = foldPoints(agent.session.events)
+    const logged = foldPoints(agent.session.snapshotEvents())
     if (logged.length === 0) return { ok: true, value: [] }
     const run = await cli.run(
       ['log', '--session', state.binding.id, '--cwd', state.binding.cwd],
@@ -788,7 +789,7 @@ export class FilesnapRewind extends Service {
     // Located by index rather than by treating a seq as one. Chunk events do
     // not survive into the persisted log, so seq is sparse there, and the
     // arithmetic that works on a live array is silently wrong on a resumed one.
-    const events = source.events
+    const events = source.snapshotEvents()
     const endIndex = events.findIndex(event => event.type === 'turn/end' && event.seq >= anchor)
     if (endIndex === -1) {
       return refuse({
@@ -805,10 +806,10 @@ export class FilesnapRewind extends Service {
       await this.ctx.agents.create({
         sessionId: childId,
         seed,
+        inheritedEventCount: SessionLogOffset(seed.length),
         meta: {
           ...source.header.cwd === undefined ? {} : { cwd: source.header.cwd },
           parentSession: source.id,
-          seedLength: seed.length,
           ...composition.agentPreset === undefined ? {} : { agentPreset: composition.agentPreset },
         },
         agentOptions: agent.options,

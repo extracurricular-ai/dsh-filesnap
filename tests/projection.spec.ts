@@ -143,7 +143,7 @@ describe('the filesnap projection', () => {
       // registers a definition and the harness drives it — so the argument
       // count is a fact about the harness this suite is linked against, not
       // about what the plugin supports.
-      const restored = ctx.sessionProjections.restore(serialized, [], session.seq, session.header)
+      const restored = ctx.sessionProjections.restore(serialized, [], session.seq, session.header, session.inheritedEventCount)
       const value = restored.snapshot.values.filesnap
       expect(value?.points).toEqual([
         {
