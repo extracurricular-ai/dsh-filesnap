@@ -7,14 +7,20 @@
 
 ## 安装器提示 “declares no dsh.bundle”
 
-这是预期提示：
-
 ```text
 dsh: warning: dsh-filesnap declares no dsh.bundle — installed as a plain
 dependency, not a profile layer
 ```
 
-dsh-filesnap 当前通过 Cordis patch row 挂载。把它加入安装命令所用的同一个 profile：
+说明你装的是 0.2.2 之前的版本。从 0.2.2 起本包自带 `dsh.bundle`，`dsh plugin add`
+会自己完成挂载，这条提示不会再出现：
+
+```console
+$ dsh plugin --profile web add dsh-filesnap@latest
+```
+
+旧版本需要手动挂载——在 `~/.dsh/profiles/web/cordis.patch.yml`（headless 则是对应的
+headless 文件）中加入：
 
 ```yaml
 - insert:
@@ -22,8 +28,8 @@ dsh-filesnap 当前通过 Cordis patch row 挂载。把它加入安装命令所�
       name: dsh-filesnap
 ```
 
-如果使用 `--profile web`，编辑 `~/.dsh/profiles/web/cordis.patch.yml`；headless 则编辑
-对应的 headless 文件。
+这样加的行在升级后照常有效：profile 自己的 patch 在所有 bundle 层之后应用，同 id 的行
+会覆盖 bundle 里的那一行，而不是重复挂载。
 
 ## 插件似乎没有加载
 

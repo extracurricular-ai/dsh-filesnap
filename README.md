@@ -14,6 +14,7 @@ English | [中文](README.zh.md)
 Rewind a [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)
 conversation and its workspace together — without touching Git. Every rewind
 happens in a fork, so `/redo` can take you back if you change your mind.
+Powered by a blazing-fast **Rust 🦀** engine.
 
 ![dsh-filesnap: conversation and workspace rewind together](assets/social-preview.png)
 
@@ -50,23 +51,13 @@ installed with this package. You do not need Rust, Git or a separate runtime.
 $ dsh plugin --profile web add dsh-filesnap
 ```
 
-The launcher may warn that this package has no `dsh.bundle`. That is expected:
-dsh-filesnap is mounted as a plugin row rather than a profile layer.
+That is the whole install: the package declares a `dsh.bundle`, so the launcher
+mounts it into the profile itself. For headless use, replace `web` with
+`headless`. If you added an `id: filesnap` row to the profile's
+`cordis.patch.yml` by hand for a version before 0.2.2, it keeps working — the
+profile's own patch applies after the bundle and overrides the same id.
 
-### 2. Enable it
-
-Add this row to `~/.dsh/profiles/web/cordis.patch.yml`:
-
-```yaml
-- insert:
-    - id: filesnap
-      name: dsh-filesnap
-```
-
-For headless use, replace `web` with `headless` in both the command and profile
-path.
-
-### 3. Verify and use
+### 2. Verify and use
 
 ```console
 $ dsh --profile web --dump-config | grep -A 1 filesnap

@@ -1,7 +1,7 @@
 {
   "name": "dsh-filesnap",
-  "version": "0.2.1",
-  "description": "Rewind DeepSeek Harness conversations and workspace files together without touching Git, with undoable restores powered by 🦀 Rust.",
+  "version": "0.2.2",
+  "description": "Rewind a DeepSeek Harness conversation and its workspace together — without touching Git. Every rewind happens in a fork, so /redo can take you back if you change your mind. Powered by a blazing-fast Rust 🦀 engine.",
   "type": "module",
   "main": "lib/index.js",
   "types": "lib/types/index.d.ts",
@@ -19,6 +19,7 @@
   "files": [
     "lib/*.js",
     "lib/types/**/*.d.ts",
+    "cordis.patch.yml",
     "README.md",
     "README.zh.md",
     "docs/*.md",
@@ -125,6 +126,9 @@
     "zod": "^4.4.3"
   },
   "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
     "client": {
       "inject": [
         "@deepseek-ai/dsh-api-session-controller",

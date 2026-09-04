@@ -9,7 +9,7 @@ launch copy. Keep public claims aligned with the current README and dated audit.
 
 **About description**
 
-> Rewind DeepSeek Harness conversations and workspace files together—without touching Git. Undo any rewind with /redo.
+> Rewind a DeepSeek Harness conversation and its workspace together — without touching Git. Every rewind happens in a fork, so /redo can take you back if you change your mind. Powered by a blazing-fast Rust 🦀 engine.
 
 **Website**
 

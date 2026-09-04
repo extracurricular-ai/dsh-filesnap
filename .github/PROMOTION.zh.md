@@ -8,7 +8,7 @@
 
 **About 描述**
 
-> 同步回退 DeepSeek Harness 对话与工作区文件，不碰 Git；每次回退都可以用 /redo 撤销。
+> 同步回退 DeepSeek Harness 的对话与工作区，不碰 Git。每次回退都发生在一个 fork 里，改变主意时 /redo 能带你回去。由一个快得离谱的 Rust 🦀 引擎驱动。
 
 **Website**
 

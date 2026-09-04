@@ -13,7 +13,7 @@
 
 为 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)
 同步回退对话与工作区文件，不碰 Git。每次回退都发生在一个新的 fork 中，因此改变主意时
-还可以用 `/redo` 回去。
+还可以用 `/redo` 回去。由一个快得离谱的 **Rust 🦀** 引擎驱动。
 
 ![dsh-filesnap：对话与工作区一起回退](assets/social-preview.png)
 
@@ -49,22 +49,12 @@ Run /redo there to reverse this rewind.
 $ dsh plugin --profile web add dsh-filesnap
 ```
 
-启动器可能提示本包没有 `dsh.bundle`。这是预期行为：dsh-filesnap 通过插件 row
-挂载，而不是一个 profile layer。
+安装到此为止：本包声明了 `dsh.bundle`，启动器会自己把它挂进 profile。headless
+profile 把 `web` 换成 `headless` 即可。如果你为 0.2.2 之前的版本在 profile 的
+`cordis.patch.yml` 里手动加过 `id: filesnap` 那一行，它照常有效——profile 自己的
+patch 在 bundle 之后应用，同 id 的行会覆盖而不是重复。
 
-### 2. 启用
-
-在 `~/.dsh/profiles/web/cordis.patch.yml` 中加入：
-
-```yaml
-- insert:
-    - id: filesnap
-      name: dsh-filesnap
-```
-
-如果使用 headless profile，把命令和路径中的 `web` 都换成 `headless`。
-
-### 3. 验证并使用
+### 2. 验证并使用
 
 ```console
 $ dsh --profile web --dump-config | grep -A 1 filesnap

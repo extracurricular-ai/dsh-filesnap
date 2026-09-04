@@ -8,15 +8,21 @@ not been restarted.
 
 ## The installer says “declares no dsh.bundle”
 
-Expected:
-
 ```text
 dsh: warning: dsh-filesnap declares no dsh.bundle — installed as a plain
 dependency, not a profile layer
 ```
 
-dsh-filesnap is currently mounted through a Cordis patch row. Add it to the same
-profile used by the install command:
+You have a version before 0.2.2. Since 0.2.2 the package ships a `dsh.bundle`,
+so `dsh plugin add` mounts it by itself and this warning no longer appears:
+
+```console
+$ dsh plugin --profile web add dsh-filesnap@latest
+```
+
+On the older version the plugin has to be mounted by hand — add this row to
+`~/.dsh/profiles/web/cordis.patch.yml` (or the headless file for
+`--profile headless`):
 
 ```yaml
 - insert:
@@ -24,8 +30,9 @@ profile used by the install command:
       name: dsh-filesnap
 ```
 
-For `--profile web`, edit `~/.dsh/profiles/web/cordis.patch.yml`; for
-`--profile headless`, edit the headless file.
+A row added this way keeps working after the upgrade: the profile's own patch
+applies after every bundle layer, and a row with the same id overrides the
+bundle's rather than duplicating it.
 
 ## The plugin does not appear to load
 
