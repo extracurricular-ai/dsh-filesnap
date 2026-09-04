@@ -71,11 +71,34 @@ linked from a built sibling:
 
 ```console
 $ git clone https://github.com/deepseek-ai/deepseek-harness ../deepseek-harness
+$ git -C ../deepseek-harness checkout dsh-v0.1.2-rc.1
 $ ( cd ../deepseek-harness && pnpm install && pnpm run build )
 $ npm install
 $ npm run harness:link
 $ npm run typecheck && npm test
 ```
+
+**Check out the tag CI pins, not the harness's master.** Both workflows in
+`.github/workflows/` name it in their `ref:`; it is the newest harness that is
+actually on npm, and the plugin is verified against that, not against whatever
+landed upstream this morning. When the pin moves, move your checkout with it.
+
+**Switching the checkout between tags needs a clean, and `git status` will
+not tell you so.** Build outputs are ignored, so they survive a checkout; and a
+package the harness removed between two tags leaves an empty directory behind,
+which git does not track and therefore never reports. tsdown matches package
+*directories* and, finding no `package.json` in an empty one, attributes it to
+the root package — the build then fails on `@deepseek-ai/dsh-root` with
+"Cannot find entry". After any checkout:
+
+```console
+$ git -C ../deepseek-harness clean -Xdf -e node_modules
+$ find ../deepseek-harness/packages -mindepth 2 -maxdepth 2 -type d -empty -delete
+$ ( cd ../deepseek-harness && pnpm run build )
+```
+
+`clean -X` removes only ignored files, so it cannot touch a source; the
+`find` removes only directories with nothing in them.
 
 `harness:link` has to be re-run after any `npm install` — npm prunes what
 `package.json` does not name, and those links are deliberately not named there.

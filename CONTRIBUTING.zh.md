@@ -56,11 +56,24 @@ harness 的包是 `peerDependencies`,所以本地 checkout 需要从一个已构
 
 ```console
 $ git clone https://github.com/deepseek-ai/deepseek-harness ../deepseek-harness
+$ git -C ../deepseek-harness checkout dsh-v0.1.2-rc.1
 $ ( cd ../deepseek-harness && pnpm install && pnpm run build )
 $ npm install
 $ npm run harness:link
 $ npm run typecheck && npm test
 ```
+
+**检出 CI pin 住的那个 tag,而不是 harness 的 master。** `.github/workflows/` 下两份 workflow 的 `ref:` 里写的就是它:那是真正发到 npm 上的最新 harness,插件是对着它验证的,而不是对着今天早上刚进上游的东西。pin 挪的时候,你的 checkout 跟着挪。
+
+**在 tag 之间切换 checkout 需要清理,而 `git status` 不会提醒你。** 构建产物是被忽略的,切换后会留下来;而上游在两个 tag 之间删掉的包会留下一个空目录,git 不跟踪空目录,所以永远不会报告它。tsdown 匹配的是包**目录**,在空目录里找不到 `package.json` 时会把它算到根包头上 —— 于是构建在 `@deepseek-ai/dsh-root` 上以 "Cannot find entry" 失败。每次 checkout 之后:
+
+```console
+$ git -C ../deepseek-harness clean -Xdf -e node_modules
+$ find ../deepseek-harness/packages -mindepth 2 -maxdepth 2 -type d -empty -delete
+$ ( cd ../deepseek-harness && pnpm run build )
+```
+
+`clean -X` 只删被忽略的文件,碰不到任何源码;那条 `find` 只删空目录。
 
 `harness:link` 在每次 `npm install` 之后都要重跑 —— npm 会剪掉 `package.json` 没写的东西,而这些链接是刻意不写进去的。[README 的开发一节](README.zh.md#开发)解释了为什么。
 
