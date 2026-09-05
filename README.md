@@ -45,7 +45,7 @@ installed with this package. You do not need Rust, Git or a separate runtime.
 > not open until you reinstall it.** Their data remains intact on disk. The same
 > refusal appears with the plugin installed if dsh is started with `pnpm dsh`
 > from a source checkout — use the built CLI or an npm-installed dsh; see
-> [troubleshooting](docs/troubleshooting.md#a-session-refuses-to-open-contains-event-type-filesnappoint--unknown-to-this-harness)
+> [troubleshooting](docs/troubleshooting.md#a-session-refuses-to-open-with-unknown-to-this-harness)
 > and [the architectural limitation](docs/architecture.md#the-upstream-event-registration-gap).
 
 ### 1. Install

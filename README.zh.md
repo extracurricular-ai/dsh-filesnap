@@ -40,7 +40,9 @@ Run /redo there to reverse this rewind.
 > [!IMPORTANT]
 > dsh 目前没有为仓库外插件提供正式的事件类型注册接口，因此 dsh-filesnap 会在加载时
 > 注册自己的 session 事件。**如果卸载插件，它捕获过的会话将暂时无法打开，重新安装后
-> 即可恢复访问。** 会话数据仍完整保留在磁盘上。详见
+> 即可恢复访问。** 会话数据仍完整保留在磁盘上。插件装着但用源码 checkout 的 `pnpm dsh`
+> 启动时也会出现同样的拒绝——请用构建版 CLI 或 npm 安装的 dsh；见
+> [排障](docs/troubleshooting.zh.md#session-拒绝打开unknown-to-this-harness)和
 > [架构限制](docs/architecture.zh.md#上游事件注册缺口)。
 
 ### 1. 安装

@@ -128,12 +128,28 @@ $ npm run build:client
 这是当前 host command 的限制。命令会报告新的 child session id，需要手动打开。逐轮浏览器
 操作会使用部署的 fork API，并自动跳转。
 
-## 卸载后某个 session 无法打开
+## session 拒绝打开：`unknown to this harness`
 
-在负责打开该 session 的 profile 中重新安装并挂载 dsh-filesnap。session 日志包含插件事件
-类型，dsh reader 必须认识它们；卸载不会删除日志或快照数据。
+```text
+Failed to load history: … session "…" contains event type "filesnap/point"
+(seq N) unknown to this harness and not marked ignorable; refusing to
+interpret the log
+```
 
-该限制会持续到 dsh 提供运行时事件注册或 ignorable non-surface event 路径。详见
+日志里有本插件的事件，而打开它的读取器没有本插件的类型声明。什么都没丢，日志和快照数据
+都完好。两种原因，看插件装没装就能分开：
+
+- **没装。** 在负责打开该 session 的 profile 里重新安装并挂载 dsh-filesnap。
+- **装了、在跑，但 dsh 是用 `pnpm dsh` 启动的。** 源码启动把 harness 的包解析到 `src/`，
+  插件的 import 解析到 `lib/`，声明落在了读取器不查的那份模块实例上。改用构建版 CLI 启动：
+
+  ```console
+  $ node apps/cli/lib/bin.js web
+  ```
+
+  或者用 npm 安装的 `@deepseek-ai/dsh`。两者把所有包都解析到 `lib/`，同一个 session 就能开。
+
+插件为什么不能直接把事件标成 `ignorable`，见
 [架构说明](architecture.zh.md#上游事件注册缺口)。
 
 ## 有些文件没有被保护

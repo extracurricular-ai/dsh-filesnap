@@ -125,15 +125,29 @@ Cordis 或 session 包会制造互不兼容的 Service class 和 registry。
 
 ## 上游事件注册缺口
 
-dsh 的持久化读取器会拒绝未知的 non-surface event。当前仓库外插件既没有正式的运行时
-注册 API，也不能通过 `Session.append` 把这种事件标记为 `ignorable`。
+dsh 的持久化读取器会拒绝日志里它不认识的 non-surface 事件类型，除非该事件的 envelope
+带有 `ignorable: true`（`session-persistence/src/coordinator.ts` 的
+`assertEventsSupported`）。harness 保留这个标记针对的正是这种情况——仓库外插件的信息性
+事件——而且每一种表示形式都会保留它。但插件设不了它：`Session.append` 用 `deepFreeze`
+构造 envelope，只把 surface 字段复制进去，在 `0.1.2-rc.1` 和 `master` 上都如此。没有选项，
+没有钩子，也没有写入侧的接缝。
 
-dsh-filesnap 因此会在加载时把三个事件类型加入读取器的 known set。卸载插件后，下次进程
-启动时该声明不再存在，包含这些事件的 session 会在重新安装前无法打开。日志和快照数据
-不会被删除。
+dsh-filesnap 因此在加载时把三个事件类型加入读取器的 known set。这个声明只能到达一个地方：
+插件自己 import 到的那份 `@deepseek-ai/dsh-session` 模块实例。有两种情况它到不了读取器：
 
-长期修复属于上游：提供正式的运行时注册点，或提供持久化读取器认可的 `ignorable` 选项。
-源码中以 `FIXME(upstream-event-registration)` 跟踪。
+- **插件没有加载。** 卸载后，它捕获过的 session 在重新安装前无法打开。磁盘上的数据完好。
+- **读取器持有同一个包的另一份实例。** 源码启动（`pnpm dsh`，经 tsx）把 harness 自己的包
+  解析到 `src/`，而插件的 import 解析到 `lib/`。两个文件，两个 Set。插件装着、跑着，session
+  照样被拒。构建版 CLI（`node apps/cli/lib/bin.js web`）和 npm 安装的 dsh 把所有包都解析到
+  `lib/`，不受影响。
+
+`tests/persistence.spec.ts` 把这个机制钉死：一份日志经真实的 store 和 JSONL 后端写入，
+在本进程读回（声明存在：能开），再在一个从未加载插件的子进程里读回（被拒，按名字，在
+point 所在的 seq）。
+
+长期修复属于上游，而且很小：让 `append` 对 non-surface 事件接受 `{ ignorable: true }`，
+并把它展开进冻结的 envelope。读取器、编解码器和 seed 校验已经认这个字段。它落地之后，
+翻转的就是子进程那条断言，而加载时的声明只为更早写下的日志保留。
 
 ## 存储生命周期
 

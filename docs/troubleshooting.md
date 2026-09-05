@@ -141,7 +141,7 @@ This is a current host-command limitation. The command reports the new child
 session id; open that session manually. The per-turn browser action uses the
 deployment's fork API and navigates automatically.
 
-## A session refuses to open: `contains event type "filesnap/point" … unknown to this harness`
+## A session refuses to open with "unknown to this harness"
 
 ```text
 Failed to load history: … session "…" contains event type "filesnap/point"

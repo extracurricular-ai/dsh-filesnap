@@ -75,6 +75,16 @@ $ ( cd ../deepseek-harness && pnpm run build )
 
 `clean -X` 只删被忽略的文件,碰不到任何源码;那条 `find` 只删空目录。
 
+**挂着本插件时,用构建版 CLI 启动 dsh,不要用 `pnpm dsh`。** `pnpm dsh` 经 tsx 运行 harness,
+把它的包解析到 `src/`;而本插件自己 import 的 `@deepseek-ai/dsh-session` 解析到 `lib/`。两份
+模块实例,意味着插件加载时做的事件类型声明落在一份上,持久化读取器查的是另一份——它写的每个
+session 都会被 `unknown to this harness and not marked ignorable` 拒绝。构建版 CLI 把所有包都
+解析到 `lib/`:
+
+```console
+$ ( cd ../deepseek-harness && node apps/cli/lib/bin.js web )
+```
+
 `harness:link` 在每次 `npm install` 之后都要重跑 —— npm 会剪掉 `package.json` 没写的东西,而这些链接是刻意不写进去的。[README 的开发一节](README.zh.md#开发)解释了为什么。
 
 测试套件有四层,最便宜的那层什么都不需要:
