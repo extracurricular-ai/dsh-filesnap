@@ -143,18 +143,38 @@ profile installer already supplies the packages from the active deployment.
 
 ## The upstream event-registration gap
 
-dsh's persistence reader rejects unknown non-surface event types. Today, an
-out-of-repository plugin cannot register a type through a supported runtime API,
-and `Session.append` cannot mark such an event `ignorable`.
+dsh's persistence reader refuses a log holding a non-surface event type it does
+not know, unless the event's envelope carries `ignorable: true`
+(`session-persistence/src/coordinator.ts`, `assertEventsSupported`). The harness
+reserved that marker for exactly this case — an out-of-repository plugin's
+informational events — and every representation preserves it. But a plugin
+cannot set it: `Session.append` builds the envelope with `deepFreeze` and copies
+only the surface fields into it, on `0.1.2-rc.1` and on `master` alike. There is
+no option, no hook, and no write-side seam.
 
 dsh-filesnap therefore adds its three event types to the reader's known set at
-load. Removing the plugin removes that declaration on the next process start,
-so sessions containing those events fail to open until the plugin is installed
-again. The log and snapshot data are not deleted.
+load. That declaration reaches one thing: the `@deepseek-ai/dsh-session` module
+instance the plugin imported. It fails to reach the reader in two situations:
 
-The durable fix belongs upstream: either a supported runtime registration point
-or an `ignorable` option honored by the persistence reader. The source tracks
-this as `FIXME(upstream-event-registration)`.
+- **The plugin is not loaded.** Uninstalling it leaves sessions it captured
+  unopenable until it is installed again. The data is intact on disk.
+- **The reader holds a different instance of the same package.** A source
+  launch (`pnpm dsh`, via tsx) resolves the harness's own packages to `src/`,
+  while the plugin's import resolves to `lib/`. Two files, two Sets. The
+  session is refused with the plugin installed and running. The built CLI
+  (`node apps/cli/lib/bin.js web`) and an npm-installed dsh resolve everything
+  to `lib/` and are unaffected.
+
+`tests/persistence.spec.ts` pins the mechanism: one log written through the
+real store and JSONL backend, read back in this process (declaration present:
+opens) and in a child process that never loaded the plugin (refused, by name,
+at the point's seq).
+
+The durable fix belongs upstream and is small: let `append` accept
+`{ ignorable: true }` for a non-surface event and spread it into the frozen
+envelope. Reader, codec and seed validation already honour the field. When that
+lands, the child-process assertion is the one that flips, and the load-time
+declaration becomes legacy-only, for logs written before it.
 
 ## Storage lifecycle
 

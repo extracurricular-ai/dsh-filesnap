@@ -141,14 +141,33 @@ This is a current host-command limitation. The command reports the new child
 session id; open that session manually. The per-turn browser action uses the
 deployment's fork API and navigates automatically.
 
-## A session stopped opening after uninstall
+## A session refuses to open: `contains event type "filesnap/point" … unknown to this harness`
 
-Reinstall and mount dsh-filesnap in the profile that opens the session. The
-session log contains plugin event types that dsh's reader must know; uninstalling
-does not delete the log or snapshot data.
+```text
+Failed to load history: … session "…" contains event type "filesnap/point"
+(seq N) unknown to this harness and not marked ignorable; refusing to
+interpret the log
+```
 
-This limitation remains until dsh provides runtime event registration or an
-ignorable non-surface event path. See
+The log holds this plugin's events and the reader that opened it did not have
+the plugin's type declaration. Nothing is lost; the log and the snapshot data
+are intact. Two causes, told apart by whether the plugin is installed:
+
+- **It is not installed.** Reinstall and mount dsh-filesnap in the profile that
+  opens the session.
+- **It is installed and running, and dsh was started with `pnpm dsh`.** A
+  source launch resolves the harness's packages to `src/` while the plugin's
+  import resolves to `lib/`, so the declaration lands on a different module
+  instance than the reader consults. Start dsh from the built CLI instead:
+
+  ```console
+  $ node apps/cli/lib/bin.js web
+  ```
+
+  or use an npm-installed `@deepseek-ai/dsh`. Both resolve every package to
+  `lib/`, and the same session opens.
+
+Why the plugin cannot simply mark its events `ignorable` is in
 [the architecture note](architecture.md#the-upstream-event-registration-gap).
 
 ## Some files are not protected

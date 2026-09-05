@@ -44,6 +44,10 @@ const PACKAGES = [
   'packages/interaction/commands',
   'packages/preset/agent-presets',
   'packages/session/session-projection',
+  // The read-back test mounts real persistence, so the marker this plugin
+  // sets on its events is proven against the reader that enforces it.
+  'packages/session/session-persistence',
+  'packages/session/session-persistence-jsonl',
   // The browser half's inputs. Their `lib/types/client` declarations are what
   // a client bundle is checked against; the bundle itself is built by the
   // harness's own preset (see tsdown.config.ts).

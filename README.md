@@ -42,8 +42,11 @@ installed with this package. You do not need Rust, Git or a separate runtime.
 > dsh does not yet provide a supported registration API for event types declared
 > by out-of-repository plugins. dsh-filesnap therefore registers its session
 > events at load time. **If you uninstall the plugin, sessions it captured will
-> not open until you reinstall it.** Their data remains intact on disk. See
-> [the architectural limitation](docs/architecture.md#the-upstream-event-registration-gap).
+> not open until you reinstall it.** Their data remains intact on disk. The same
+> refusal appears with the plugin installed if dsh is started with `pnpm dsh`
+> from a source checkout — use the built CLI or an npm-installed dsh; see
+> [troubleshooting](docs/troubleshooting.md#a-session-refuses-to-open-contains-event-type-filesnappoint--unknown-to-this-harness)
+> and [the architectural limitation](docs/architecture.md#the-upstream-event-registration-gap).
 
 ### 1. Install
 

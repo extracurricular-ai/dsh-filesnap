@@ -100,6 +100,18 @@ $ ( cd ../deepseek-harness && pnpm run build )
 `clean -X` removes only ignored files, so it cannot touch a source; the
 `find` removes only directories with nothing in them.
 
+**Run dsh from the built CLI, not `pnpm dsh`, when this plugin is mounted.**
+`pnpm dsh` runs the harness through tsx, which resolves its packages to `src/`;
+the plugin's own import of `@deepseek-ai/dsh-session` resolves to `lib/`. Two
+module instances means the event-type declaration this plugin makes at load
+lands on one and the persistence reader consults the other — every session it
+writes is then refused with `unknown to this harness and not marked ignorable`.
+The built CLI resolves everything to `lib/`:
+
+```console
+$ ( cd ../deepseek-harness && node apps/cli/lib/bin.js web )
+```
+
 `harness:link` has to be re-run after any `npm install` — npm prunes what
 `package.json` does not name, and those links are deliberately not named there.
 The [README's Development section](README.md#development) explains why.
