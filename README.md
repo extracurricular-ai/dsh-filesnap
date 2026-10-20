@@ -12,15 +12,15 @@
 
 **dsh-filesnap 是 DeepSeek Harness（DSH）的对话与文件回退插件。** 先查看将写回、恢复或删除的文件，确认后一起回退对话和已跟踪文件。原对话保留为分支，选错了可以用 `/redo` 撤销回退，无需 Git。
 
-**0.4.1：修复桌面客户端的 RPC 路由、回退后分支跳转与提示词回填，以及图标导致的按钮不显示。** 保留 0.4.0 的中断恢复面板；按钮通过独立 RPC 获取结果，不往对话历史写操作日志。
+**0.4.2：修复首次快照读取失败后的重试、回退分支携带子代理，以及持久化 0.2.x 的冷分支读取和迁移。** 保留 0.4.0 的中断恢复面板；按钮通过独立 RPC 获取结果，不往对话历史写操作日志。
 
-已知限制：首次 points 读取失败后的重试、回退分支携带子代理，以及持久化 0.2.x 下的冷分支读取和迁移问题尚未修复。本版不代表全面兼容 harness 0.2.x，详见 [更新记录](CHANGELOG.md)。
+已在 DSH 0.1.2-rc.1 和已发布的 0.2.1-rc.2 上通过运行时测试，涵盖真实持久化读取、迁移和子代理克隆；尚未进行桌面 UI 端到端验证。详见 [更新记录](CHANGELOG.md)。
 
 ![dsh-filesnap：对话与工作区一起回退](assets/social-preview-whale-girl.jpg)
 
 [完整中文演示（旧版）· 2:24](https://www.bilibili.com/video/BV1BiYT6qEjs/) · [English walkthrough（旧版）· 2:29](https://youtu.be/WPEXKesR_EM)
 
-0.4.1 需要 FileSnap 引擎 **0.5.1+**。本次无需发布新引擎；预览接口不可用时会拒绝还原。
+0.4.2 需要 FileSnap 引擎 **0.5.1+**。本次无需发布新引擎；预览接口不可用时会拒绝还原。
 
 ## 安装
 
@@ -28,7 +28,7 @@
 dsh plugin --profile web add dsh-filesnap
 ```
 
-需要 DeepSeek Harness（本版集成验证使用 **0.1.2-rc.1**）、Node.js `^22.19` 或 `>=24`。支持 Linux、macOS、Windows 的 x64/arm64；FileSnap 0.5.1+ 引擎随插件安装。headless 用户把 profile 改为 `headless`。
+需要 DeepSeek Harness（运行时验证覆盖 **0.1.2-rc.1 / 0.2.1-rc.2**）、Node.js `^22.19` 或 `>=24`。支持 Linux、macOS、Windows 的 x64/arm64；FileSnap 0.5.1+ 引擎随插件安装。headless 用户把 profile 改为 `headless`。
 
 重启对应 profile 即可，不需要手动添加 loader。若从 0.2.1 或更早升级，先删除 `~/.dsh/profiles/<profile>/cordis.patch.yml` 中手写的 `id: filesnap` 条目，避免与内置 bundle 重复。
 

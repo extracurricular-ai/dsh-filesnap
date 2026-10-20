@@ -1,18 +1,19 @@
 # Changelog
 
-## Unreleased
+## 0.4.2
 
+- 首次 points 读取失败后，重新打开会话可重试，仍显示的会话会延迟重试一次；取消过期重试并共享进行中的请求，避免恢复后的回退按钮再次消失（#14，修复 #13）。
+- Retry failed initial points reads on reopening, with one delayed retry while the view remains visible. Cancel stale retries and share in-flight requests so recovered rewind buttons stay available (#14, fixes #13).
 - 兼容两代持久化接口读取冷会话、枚举迁移日志和定位原始文件，修复 0.2.x 下 `persistence.inspect is not a function`（#17，修复 #16）。
 - Read cold sessions, list migration logs and locate raw artifacts through either persistence generation, fixing `persistence.inspect is not a function` on 0.2.x (#17, fixes #16).
-- 子代理克隆使用原始会话 ID 的稳定标识，避免同毫秒创建的不同子代理被误去重；冷加载后连续回退仍继承最新克隆，旧运行时也递归携带切点之前的后代。
-- Identify carried subagents by their original session ID so siblings created in the same millisecond stay distinct. Repeated rewinds after cold reloads extend the latest clone, and legacy runtimes also carry descendants recursively at the fork point.
-
-- 回退后的分支现在携带被保留轮次中派生的子智能体信息：在分支下克隆每个子会话并重写血缘（创建时间、工作目录、预设与深度保持不变），子智能体因此在分支中可见、可继续；不具备 catalog 词汇表的运行时只克隆、不写入其读不懂的事件，单个子会话失败仅告警、回退本身不受影响。
-- A rewound branch now carries the subagents spawned in its retained turns: every child session is cloned under the branch with its lineage rewritten (creation time, workspace, preset and depth preserved), so it is both visible and continuable there. Runtimes without the catalog vocabulary clone without writing events they cannot read, and one child's failure only warns — the rewind itself never fails.
-- 回退分支携带的子智能体现在按回退切点级联截断：切点之后出生的孙代理不再带入，被携带的子孙代理各自回到切点时刻的状态；撤销回退（redo）回到原件时完整家族原样在位。
-- Carried subagents are now cut recursively at the fork point: descendants born after the cut are left behind, carried ones return to their state at the cut, and redoing the rewind lands back on the untouched original with its full family intact.
-- 首次 points 读取失败后允许重新打开会话重试，并为仍显示的会话安排一次延迟重试；新请求取消过期重试，同一 revision 的消费者共享正在进行的自动重试，避免恢复后的回退按钮再次消失（#14，修复 #13）。
-- Retry failed initial points reads on reopening, with one delayed retry while the view remains visible. New requests cancel stale retries, and consumers of the same revision share an in-flight automatic retry so recovered rewind buttons stay available (#14, fixes #13).
+- 回退分支递归携带切点之前的子智能体及后代，并将各自日志截断到切点；原会话及其子代理保持完整，redo 可回到原件。旧运行时不写入其不支持的 catalog 事件（#17，包含 #8、#15，修复 #6）。
+- Carry subagents and descendants into rewind branches recursively, cutting each log at the fork point. Preserve the original family for redo, and avoid catalog writes on runtimes without that vocabulary (#17, includes #8 and #15, fixes #6).
+- 用原始会话 ID 识别子代理血缘，避免同一毫秒创建的不同子代理被误去重；冷加载后连续回退继承最新克隆，旧运行时也能发现孙代理。单个子代理失败仅告警，不中断文件回退。
+- Identify subagent lineages by the original session ID so siblings created in the same millisecond stay distinct. Repeated rewinds after cold reload extend the latest clone; legacy runtimes discover descendants too. Individual carry failures warn without interrupting file rewind.
+- 验证：DSH 0.1.2-rc.1 下 190 项测试通过，0.2.1-rc.2 下 189 项通过、1 项原生 v0 格式专用测试跳过；新增新版运行时 CI，覆盖真实冷读取、迁移备份和克隆会话重读。尚未进行桌面 UI 端到端验证。
+- Validation: 190 tests pass on DSH 0.1.2-rc.1; 189 pass on 0.2.1-rc.2 with one native-v0-only test skipped. Add published-runtime CI covering real cold reads, migration backups and persisted clones. Desktop UI end-to-end validation is not included.
+- 感谢 @1Dreamer666 的报告和修复。依赖及引擎要求不变，仍使用 FileSnap 0.5.1+，本次无需发布新引擎。
+- Thanks to @1Dreamer666 for the reports and fixes. Dependencies and engine requirements are unchanged; FileSnap 0.5.1+ remains sufficient.
 
 ## 0.4.1
 

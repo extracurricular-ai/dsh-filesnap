@@ -1,8 +1,8 @@
 # Quick start
 
-This guide covers **dsh-filesnap 0.4.1**: preview file changes before rewinding, inspect usage and clean up in independent panels, and migrate older conversations from Settings.
+This guide covers **dsh-filesnap 0.4.2**: preview file changes before rewinding, inspect usage and clean up in independent panels, and migrate older conversations from Settings.
 
-Version 0.4.1 fixes desktop RPC routing, navigation and prompt refill after rewind, and icon compatibility. Failed initial points reads, subagent carry, and persistence 0.2.x cold branch reads and migration remain unresolved; see the [release notes](../../CHANGELOG.md).
+Version 0.4.2 retries failed initial points reads, carries subagents and descendants into rewind branches at the fork point, and supports persistence 0.2.x cold branch reads and migration. See the [release notes](../../CHANGELOG.md).
 
 The screenshots below show the Chinese UI in 0.4.0. [Browse the full gallery and historical versions](../../docs/screenshots.md).
 
@@ -12,7 +12,7 @@ The screenshots below show the Chinese UI in 0.4.0. [Browse the full gallery and
 dsh plugin --profile web add dsh-filesnap
 ```
 
-Restart the Web UI profile. The bundle and FileSnap engine install with the package; no manual loader row is needed. When upgrading from 0.2.1 or earlier, remove the old handwritten `id: filesnap` row. Current integration validation uses DSH 0.1.2-rc.1.
+Restart the Web UI profile. The bundle and FileSnap engine install with the package; no manual loader row is needed. When upgrading from 0.2.1 or earlier, remove the old handwritten `id: filesnap` row. Runtime tests cover DSH 0.1.2-rc.1 and 0.2.1-rc.2; desktop UI end-to-end validation is not included.
 
 ## Preview and rewind
 

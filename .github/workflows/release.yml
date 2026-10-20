@@ -50,9 +50,8 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: deepseek-ai/deepseek-harness
-          # Pinned to the newest harness that is actually on npm (`next`), so a
-          # commit on the harness's master cannot break a release or a CI run
-          # against an API nobody can install yet. Move it when the plugin moves.
+          # Retain the supported build baseline. CI separately tests the
+          # published 0.2.1-rc.2 runtime and its persistence generation.
           ref: dsh-v0.1.2-rc.1
           path: .harness
 

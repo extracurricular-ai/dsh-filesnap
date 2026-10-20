@@ -12,15 +12,15 @@
 
 **dsh-filesnap restores conversations and tracked files together in DeepSeek Harness (DSH).** Preview the files to write, restore or delete, then confirm. Keep the original conversation in a branch, and use `/redo` to reverse a mistaken rewind. No Git required.
 
-**0.4.1 fixes desktop RPC routing, branch navigation and prompt refill after rewind, and missing controls caused by renamed icons.** The interrupted-recovery panel introduced in 0.4.0 remains available. Buttons return results over independent RPC without writing operation logs to the conversation.
+**0.4.2 fixes retries after failed initial snapshot reads, carries subagents into rewind branches, and supports cold branch reads and migration on persistence 0.2.x.** The interrupted-recovery panel introduced in 0.4.0 remains available. Buttons return results over independent RPC without writing operation logs to the conversation.
 
-Known limitations: retries after a failed initial points read, carrying subagents into rewind branches, and cold branch reads and migration on persistence 0.2.x remain unresolved. This release does not establish full harness 0.2.x compatibility. See the [changelog](CHANGELOG.md).
+Runtime tests pass on DSH 0.1.2-rc.1 and the published 0.2.1-rc.2, including real persisted-session reads, migrations and subagent clones. Desktop UI end-to-end validation is not included. See the [changelog](CHANGELOG.md).
 
 ![dsh-filesnap: rewind conversations and workspace files](assets/social-preview-whale-girl.jpg)
 
 [English walkthrough (older version) · 2:29](https://youtu.be/WPEXKesR_EM) · [中文演示（旧版）· 2:24](https://www.bilibili.com/video/BV1BiYT6qEjs/)
 
-Version 0.4.1 requires FileSnap engine **0.5.1+**. No new engine release is needed for this update. An unavailable preview interface refuses the restore.
+Version 0.4.2 requires FileSnap engine **0.5.1+**. No new engine release is needed for this update. An unavailable preview interface refuses the restore.
 
 ## Install
 
@@ -28,7 +28,7 @@ Version 0.4.1 requires FileSnap engine **0.5.1+**. No new engine release is need
 dsh plugin --profile web add dsh-filesnap
 ```
 
-Requires DeepSeek Harness (integration verified with **0.1.2-rc.1**) and Node.js `^22.19` or `>=24`. Linux, macOS and Windows on x64/arm64 are supported. The FileSnap 0.5.1+ engine installs with the plugin. For headless use, replace `web` with `headless`.
+Requires DeepSeek Harness (runtime tests cover **0.1.2-rc.1 / 0.2.1-rc.2**) and Node.js `^22.19` or `>=24`. Linux, macOS and Windows on x64/arm64 are supported. The FileSnap 0.5.1+ engine installs with the plugin. For headless use, replace `web` with `headless`.
 
 Restart the profile. No manual loader entry is needed. When upgrading from 0.2.1 or earlier, remove the manually added `id: filesnap` entry from `~/.dsh/profiles/<profile>/cordis.patch.yml` to avoid a duplicate with the bundle.
 

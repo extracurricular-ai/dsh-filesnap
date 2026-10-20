@@ -1,6 +1,6 @@
 {
   "name": "dsh-filesnap",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "description": "DSH Rewind & Redo — by FileSnap. A DeepSeek Harness plugin that restores conversations and tracked files together, preserves the original conversation in a branch, and lets /redo reverse the rewind. No Git required.",
   "type": "module",
   "main": "lib/index.js",
