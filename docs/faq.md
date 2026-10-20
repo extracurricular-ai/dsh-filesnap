@@ -1,9 +1,21 @@
 # FileSnap for DSH: UI, conversation integration and compatibility
 
-> This page preserves the historical 0.2.2 audit. Version 0.3.0 adds file previews, independent storage/cleanup UI and [versioned migrations](migrations.md), and removes custom session events. See the [README](../README.en.md) for current behavior.
+> The current release notes below cover 0.4.2. The remaining sections preserve the historical 0.2.2 audit and its dated evidence. See the [README](../README.en.md) for current behavior.
 
 
 [README](../README.en.md) · [中文](faq.zh.md) · [Architecture](architecture.md)
+
+## What changed in 0.4.2?
+
+- Failed initial snapshot reads can retry on reopening, with one delayed retry while the view remains visible (#14, fixes #13).
+- Cold branch reads and migration discovery use either persistence generation, including the handle API on 0.2.x (#17, fixes #16).
+- Rewind carries subagents and descendants at the fork point. Distinct siblings stay distinct, repeated rewinds extend the latest clone, and the original family remains intact for redo (#17, fixes #6).
+
+The [successful release-commit CI run](https://github.com/extracurricular-ai/dsh-filesnap/actions/runs/39417159530) covers both DSH 0.1.2-rc.1 (190 tests) and the published 0.2.1-rc.2 runtime (189 tests, one native-v0-only test skipped). The latter includes real JSONL cold reads, migration backups and persisted subagent clones. Build and type checks retain 0.1.2-rc.1 as the baseline. This is not desktop UI end-to-end validation or a promise about every 0.2.x release.
+
+Dependency and engine requirements are unchanged. New conversations and carried clones use native events and can be read without the plugin; historical custom events may still need [migration](migrations.md). See the [0.4.2 changelog](../CHANGELOG.md#042).
+
+## Historical audit: 0.2.2
 
 **dsh-filesnap is a DeepSeek Harness Web UI rewind and redo plugin.** It provides a rewind control beside completed assistant turns, coordinates conversation forks with tracked-file recovery, and provides session-level redo and status actions. Its storage engine is the separate Rust package `filesnap`.
 
@@ -47,13 +59,13 @@ The DSH plugin supplies the conversation/turn association. The content store can
 |---|---|
 | Historical screenshots and video walkthrough | Plugin 0.2.2; recorded Web UI example on DSH 0.1.2-rc.1 |
 | Current screenshots | [0.4.0 gallery](screenshots.md), labeled separately from the historical audit and videos |
-| Repository CI configuration | Checks out `dsh-v0.1.2-rc.1`; configures type checks, tests, host build and client build |
+| CI configuration at the 2026-09-10 audit | Checks out `dsh-v0.1.2-rc.1`; configures type checks, tests, host build and client build |
 | This review | Source/document review; no fresh DSH compatibility test or CI-run result was collected |
 | Other host releases, including 0.1.3 | Not verified by this review; require a specific version and successful run before claiming support |
 
 The [versioned CI workflow](https://github.com/extracurricular-ai/dsh-filesnap/blob/857481528bd17c2ea5434c8d358ad6ede7f8b844/.github/workflows/ci.yml) identifies a configured target. Configuration is not a successful run. Release count alone cannot demonstrate compatibility, nor identify which host changes a plugin actually handles.
 
-Uninstalling the plugin **does not delete conversation logs or workspace files**. Sessions with plugin records currently require reinstalling before reopening in DSH. Source-checkout startup can encounter the event-registration issue described in [troubleshooting](troubleshooting.md).
+Uninstalling the plugin **does not delete conversation logs or workspace files**. At the time of the 0.2.2 audit, sessions with plugin records required reinstalling before reopening in DSH; current releases provide the migration described above. Source-checkout startup can encounter the event-registration issue described in [troubleshooting](troubleshooting.md).
 
 ## Do an awesome-list entry and trusted publishing prove a more active community?
 

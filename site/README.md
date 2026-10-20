@@ -51,7 +51,7 @@ Reference: [GitHub's custom Pages workflow documentation](https://docs.github.co
 Website release verification belongs in the promotion tracker. A successful build does not establish deployment, search indexing or third-party player availability.
 
 
-The UI & integration FAQ renders from docs/faq.md and docs/faq.zh.md. It documents UI registration, host-turn integration and configured compatibility checks with fixed-version source links. Do not turn a configured CI target into a claim that an untested host version passed.
+The UI & integration FAQ renders from docs/faq.md and docs/faq.zh.md. It separates current release validation and successful CI runs from the preserved historical audit, UI registration and host-turn integration evidence. Do not turn a configured CI target into a claim that an untested host version passed.
 
 ## Screenshots
 

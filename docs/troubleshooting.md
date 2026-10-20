@@ -147,6 +147,20 @@ Older custom events may prevent reopening without the plugin. Version 0.3.0 writ
 
 If the UI cannot start, stop DSH and use the standalone offline tool. [Migration, backup and rollback](migrations.md).
 
+## Cold branches report `persistence.inspect is not a function`
+
+Upgrade the plugin to **0.4.2 or later** and restart the active profile. Older plugin readers call an API removed by persistence 0.2.x; 0.4.2 uses the read-handle API when needed. This error alone does not establish that snapshots are missing. Keep the ancestor conversations and snapshot data: inherited points still depend on them.
+
+## The rewind button disappears after the first snapshot read fails
+
+Version **0.4.2** retries once after a delay while the view remains visible, and allows a new request when the conversation is reopened. If the read still fails, check the host error output and include the exact plugin and harness versions in a report. Retrying cannot recover deleted snapshots or unreadable ancestor logs.
+
+## A rewound branch is missing subagents
+
+Version **0.4.2** carries subagents and descendants during a successful rewind. Each clone keeps only history at or before the fork point; descendants born later are intentionally absent. Existing branches created before upgrading are not backfilled automatically.
+
+An individual child read or write failure warns without failing the file rewind. Check host output for `could not carry subagents` or `was not carried`. The original conversation and its children remain unchanged, including the history excluded from the branch.
+
 ## Some files are not protected
 
 Ask the current workspace rather than guessing:
